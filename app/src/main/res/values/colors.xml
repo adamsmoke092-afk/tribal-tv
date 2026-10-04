@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window/launch surface behind the Compose UI. -->
+    <color name="brand_background">#15121A</color>
+
+    <!-- Launcher icon: warm tangerine background, white retro-TV foreground. -->
+    <color name="ic_launcher_background">#F4611E</color>
+</resources>
