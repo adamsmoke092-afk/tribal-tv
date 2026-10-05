@@ -57,3 +57,18 @@ fun groupChannels(channels: List<M3uChannel>): List<Pair<String, List<M3uChannel
         .groupBy({ it.first }, { it.second })
         .toSortedMap(compareBy<String> { it == "Ungrouped" }.thenBy { it })
         .toList()
+
+/**
+ * Case-insensitive "contains" filter over each channel's clean name and
+ * its category names. A blank query returns the list unchanged. Meant for
+ * live search-as-you-type; cheap enough to recompute per keystroke at
+ * playlist scale (hundreds of channels).
+ */
+fun filterChannels(query: String, channels: List<M3uChannel>): List<M3uChannel> {
+    val needle = query.trim().lowercase()
+    if (needle.isEmpty()) return channels
+    return channels.filter { channel ->
+        parseDisplay(channel.name).cleanName.lowercase().contains(needle) ||
+            categoriesForGroupTitle(channel.groupTitle).any { it.lowercase().contains(needle) }
+    }
+}

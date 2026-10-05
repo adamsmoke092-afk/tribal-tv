@@ -3,6 +3,7 @@ package com.example.iptvapp
 import com.example.iptvapp.playlist.M3uChannel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChannelDisplayTest {
@@ -90,5 +91,44 @@ class ChannelDisplayTest {
         // D appears under both of its categories.
         assertEquals(2, grouped.first { it.first == "News" }.second.size)
         assertEquals(listOf("D"), grouped.first { it.first == "Sport" }.second.map { it.name })
+    }
+
+    @Test
+    fun `blank query returns everything`() {
+        val channels = listOf(
+            M3uChannel("SABC 1", "http://a", groupTitle = "News"),
+            M3uChannel("eTV", "http://b", groupTitle = "Entertainment")
+        )
+        assertEquals(channels, filterChannels("", channels))
+        assertEquals(channels, filterChannels("   ", channels))
+    }
+
+    @Test
+    fun `search is case-insensitive`() {
+        val channels = listOf(
+            M3uChannel("SABC 1 (576p)", "http://a", groupTitle = "News")
+        )
+        assertEquals(1, filterChannels("sabc", channels).size)
+        assertEquals(1, filterChannels("SABC", channels).size)
+    }
+
+    @Test
+    fun `no match returns empty`() {
+        val channels = listOf(M3uChannel("SABC 1", "http://a", groupTitle = "News"))
+        assertTrue(filterChannels("xyzzy", channels).isEmpty())
+    }
+
+    @Test
+    fun `query matches on group name`() {
+        val channels = listOf(
+            M3uChannel("Totally different name", "http://a", groupTitle = "News")
+        )
+        assertEquals(1, filterChannels("news", channels).size)
+    }
+
+    @Test
+    fun `query is trimmed and matches the clean name`() {
+        val channels = listOf(M3uChannel("SABC 2 (576p)", "http://a", groupTitle = "News"))
+        assertEquals(1, filterChannels("  sabc 2  ", channels).size)
     }
 }

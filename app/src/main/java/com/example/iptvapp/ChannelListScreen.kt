@@ -19,30 +19,42 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.iptvapp.playlist.M3uChannel
 
 /**
- * Dark cinema channel list (UI redesign step 2). Custom top bar instead of
- * TopAppBar to keep full control of colors; flattened LazyColumn with plain
- * header items (sticky headers skipped — needs an experimental opt-in and
- * adds nothing the plain row doesn't on this device).
+ * Dark cinema channel list. Custom top bar instead of TopAppBar to keep
+ * full control of colors; flattened LazyColumn with plain header items
+ * (sticky headers skipped — needs an experimental opt-in and adds nothing
+ * the plain row doesn't on this device).
  *
- * Same contract as before: loading spinner on first load, inline error on
- * failed fetch, refresh button calls IptvApp's onRefresh.
+ * Feature batch: a search icon swaps the title for an inline search field;
+ * filtering is live, group counts follow the filtered results, and empty
+ * groups drop out. Query and search-mode survive rotation
+ * (rememberSaveable + configChanges).
  */
 @Composable
 fun ChannelListScreen(
@@ -51,6 +63,10 @@ fun ChannelListScreen(
     onChannelSelected: (M3uChannel) -> Unit,
     onRefresh: () -> Unit
 ) {
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isSearching by rememberSaveable { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+
     Column(
         Modifier
             .fillMaxSize()
@@ -62,19 +78,63 @@ fun ChannelListScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Channels",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.weight(1f)
-            )
-            IconButton(onClick = onRefresh) {
-                Icon(
-                    imageVector = TribalIcons.Refresh,
-                    contentDescription = "Refresh",
-                    tint = MaterialTheme.colorScheme.onBackground
+            if (isSearching) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    placeholder = {
+                        Text(
+                            text = "Search channels",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 )
+                IconButton(onClick = {
+                    // Close clears the query first, then exits search mode.
+                    if (searchQuery.isNotEmpty()) searchQuery = "" else isSearching = false
+                }) {
+                    Icon(
+                        imageVector = TribalIcons.Close,
+                        contentDescription = if (searchQuery.isNotEmpty()) "Clear search" else "Close search",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            } else {
+                Text(
+                    text = "Channels",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { isSearching = true }) {
+                    Icon(
+                        imageVector = TribalIcons.Search,
+                        contentDescription = "Search",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                IconButton(onClick = onRefresh) {
+                    Icon(
+                        imageVector = TribalIcons.Refresh,
+                        contentDescription = "Refresh",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
@@ -92,25 +152,36 @@ fun ChannelListScreen(
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else {
-            val grouped = remember(channels) { groupChannels(channels) }
-            LazyColumn {
-                grouped.forEach { (group, groupChannels) ->
-                    // Prefixed keys so a header can never collide with a channel key.
-                    item(key = "hdr:$group") {
-                        GroupHeader(name = group, count = groupChannels.size)
-                    }
-                    items(
-                        items = groupChannels,
-                        key = { channel -> "ch:$group|${channel.streamUrl}" }
-                    ) { channel ->
-                        ChannelRow(
-                            channel = channel,
-                            onClick = { onChannelSelected(channel) }
-                        )
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outline,
-                            thickness = 0.5.dp
-                        )
+            val visible = remember(channels, searchQuery) { filterChannels(searchQuery, channels) }
+
+            if (channels.isNotEmpty() && visible.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "No channels match",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                val grouped = remember(visible) { groupChannels(visible) }
+                LazyColumn {
+                    grouped.forEach { (group, groupChannels) ->
+                        // Prefixed keys so a header can never collide with a channel key.
+                        item(key = "hdr:$group") {
+                            GroupHeader(name = group, count = groupChannels.size)
+                        }
+                        items(
+                            items = groupChannels,
+                            key = { channel -> "ch:$group|${channel.streamUrl}" }
+                        ) { channel ->
+                            ChannelRow(
+                                channel = channel,
+                                onClick = { onChannelSelected(channel) }
+                            )
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline,
+                                thickness = 0.5.dp
+                            )
+                        }
                     }
                 }
             }
