@@ -86,7 +86,7 @@ class ChannelDisplayTest {
             M3uChannel("D", "http://d", groupTitle = "News;Sport")
         )
         val grouped = groupChannels(channels)
-        assertEquals(listOf("News", "Sport", "Ungrouped", "Zulu"), grouped.map { it.first })
+        assertEquals(listOf("News", "Sport", "Zulu", "Ungrouped"), grouped.map { it.first })
         // D appears under both of its categories.
         assertEquals(2, grouped.first { it.first == "News" }.second.size)
         assertEquals(listOf("D"), grouped.first { it.first == "Sport" }.second.map { it.name })
