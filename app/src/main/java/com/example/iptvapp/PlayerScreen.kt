@@ -1,6 +1,8 @@
 package com.example.iptvapp
 
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +20,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -29,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,8 +55,11 @@ import kotlinx.coroutines.delay
  * something's actually wrong, or silently fail on any error code besides
  * the three network ones PlayerFactory retries.
  *
- * UI: dark cinema (redesign step 3). Playback logic, listeners, BackHandler
- * and the buffering timer are unchanged — only the chrome around them.
+ * UI: dark cinema (redesign step 3) + feature batch: the manifest's
+ * configChanges keeps the activity alive across rotation, so playback and
+ * the selected channel survive; the header bar hides in landscape so the
+ * video fills the screen; the error card gained a Retry button.
+ * Playback listeners, BackHandler and the buffering timer are unchanged.
  */
 @Composable
 fun PlayerScreen(
@@ -63,6 +70,10 @@ fun PlayerScreen(
     var isBuffering by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     val display = remember(channelName) { parseDisplay(channelName) }
+
+    // Landscape = video fills the screen; the PlayerView controller and
+    // the system back gesture still work without the header bar.
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Without this, the system/gesture back button exits the whole app
     // instead of returning to the channel list — there's no navigation
@@ -106,36 +117,38 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = TribalIcons.Back,
-                    contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
-            Column {
-                Text(
-                    text = display.cleanName,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Chip("Live", accent = true)
-                    display.quality?.let { Chip(it, accent = false) }
+        if (!isLandscape) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = TribalIcons.Back,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                Column {
+                    Text(
+                        text = display.cleanName,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Chip("Live", accent = true)
+                        display.quality?.let { Chip(it, accent = false) }
+                    }
                 }
             }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
 
         Box(Modifier.fillMaxSize()) {
             AndroidView(
@@ -159,16 +172,33 @@ fun PlayerScreen(
                 ) {
                     Text(message, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = onBack,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Back to channels")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = onBack,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Back to channels")
+                        }
+                        Button(
+                            onClick = {
+                                statusMessage = null
+                                player.prepare()
+                                player.playWhenReady = true
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Retry")
+                        }
                     }
                 }
             }
