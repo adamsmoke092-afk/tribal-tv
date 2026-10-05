@@ -1,15 +1,26 @@
 package com.example.iptvapp
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,7 +30,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -37,8 +52,10 @@ import kotlinx.coroutines.delay
  * leave the user staring at an infinite spinner with no signal that
  * something's actually wrong, or silently fail on any error code besides
  * the three network ones PlayerFactory retries.
+ *
+ * UI: dark cinema (redesign step 3). Playback logic, listeners, BackHandler
+ * and the buffering timer are unchanged — only the chrome around them.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
     player: ExoPlayer,
@@ -47,6 +64,7 @@ fun PlayerScreen(
 ) {
     var isBuffering by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
+    val display = remember(channelName) { parseDisplay(channelName) }
 
     // Without this, the system/gesture back button exits the whole app
     // instead of returning to the channel list — there's no navigation
@@ -85,15 +103,41 @@ fun PlayerScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(channelName) },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Text("←")
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            Column {
+                Text(
+                    text = display.cleanName,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Chip("Live", accent = true)
+                    display.quality?.let { Chip(it, accent = false) }
                 }
             }
-        )
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
 
         Box(Modifier.fillMaxSize()) {
             AndroidView(
@@ -111,13 +155,38 @@ fun PlayerScreen(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .padding(16.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(16.dp)
                 ) {
-                    Text(message)
-                    Button(onClick = onBack) {
+                    Text(message, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = onBack,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text("Back to channels")
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun Chip(text: String, accent: Boolean) {
+    Text(
+        text = text,
+        fontSize = 11.sp,
+        color = if (accent) TribalAccentTintText else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (accent) TribalAccentTint else TribalChipBackground)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    )
 }
