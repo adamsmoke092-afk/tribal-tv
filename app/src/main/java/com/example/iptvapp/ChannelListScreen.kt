@@ -61,7 +61,8 @@ fun ChannelListScreen(
     channels: List<M3uChannel>,
     error: String?,
     onChannelSelected: (M3uChannel) -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearching by rememberSaveable { mutableStateOf(false) }
@@ -132,6 +133,13 @@ fun ChannelListScreen(
                     Icon(
                         imageVector = TribalIcons.Refresh,
                         contentDescription = "Refresh",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = TribalIcons.Settings,
+                        contentDescription = "Settings",
                         tint = MaterialTheme.colorScheme.onBackground
                     )
                 }

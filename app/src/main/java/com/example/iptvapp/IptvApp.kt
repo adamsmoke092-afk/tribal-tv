@@ -17,16 +17,25 @@ import kotlinx.coroutines.launch
  * Top-level screen toggle: shows the channel list until something is
  * tapped, then hands the stream URL to PlayerFactory.loadChannel and
  * switches to the player screen (SPEC §2.4/§5 — "wire it together").
+ *
+ * Feature batch: owns the playlist URL as state, seeded from
+ * SettingsStore by MainActivity. It only changes through the settings
+ * dialog's save path, which fetches and parses the new playlist before
+ * anything is persisted or cached.
  */
 @Composable
 fun IptvApp(
-    playlistUrl: String,
+    initialPlaylistUrl: String,
+    settings: SettingsStore,
     repository: PlaylistRepository,
     player: ExoPlayer
 ) {
     var channels by remember { mutableStateOf<List<M3uChannel>>(emptyList()) }
     var selectedChannel by remember { mutableStateOf<M3uChannel?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
+    var playlistUrl by remember { mutableStateOf(initialPlaylistUrl) }
+    var showLogos by remember { mutableStateOf(settings.showLogos()) }
+    var showSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -55,8 +64,36 @@ fun IptvApp(
                         loadError = "Refresh failed: ${e.message}"
                     }
                 }
-            }
+            },
+            onOpenSettings = { showSettings = true }
         )
+
+        if (showSettings) {
+            SettingsDialog(
+                currentUrl = playlistUrl,
+                initialShowLogos = showLogos,
+                onDismiss = { showSettings = false },
+                onSave = { newUrl, newShowLogos ->
+                    try {
+                        if (newUrl != playlistUrl) {
+                            // Throws before the Room cache is replaced if the
+                            // fetch fails or the playlist parses to nothing.
+                            val loaded = repository.refreshChannels(newUrl)
+                            channels = loaded
+                            playlistUrl = newUrl
+                            settings.setPlaylistUrl(newUrl)
+                        }
+                        if (newShowLogos != showLogos) {
+                            showLogos = newShowLogos
+                            settings.setShowLogos(newShowLogos)
+                        }
+                        null
+                    } catch (e: Exception) {
+                        e.message ?: "Failed to load that playlist"
+                    }
+                }
+            )
+        }
     } else {
         PlayerScreen(
             player = player,

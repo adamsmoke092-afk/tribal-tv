@@ -29,6 +29,13 @@ class PlaylistRepository(private val channelDao: ChannelDao) {
     suspend fun refreshChannels(playlistUrl: String): List<M3uChannel> = withContext(Dispatchers.IO) {
         val text = fetchRawText(playlistUrl)
         val channels = M3uPlaylistParser.parse(text)
+        // An empty result means the URL is wrong or the content isn't an
+        // M3U. Replacing the cache with an empty table would wipe good
+        // data for nothing — fail BEFORE touching Room. The settings
+        // dialog relies on this to validate a new URL before persisting it.
+        if (channels.isEmpty()) {
+            throw IllegalStateException("No channels found in that playlist")
+        }
         channelDao.replaceAll(channels.map { it.toEntity() })
         channels
     }
