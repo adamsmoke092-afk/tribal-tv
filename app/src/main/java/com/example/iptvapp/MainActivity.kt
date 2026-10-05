@@ -3,7 +3,6 @@ package com.example.iptvapp
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.iptvapp.player.PlayerFactory
 import com.example.iptvapp.playlist.AppDatabase
@@ -32,7 +31,7 @@ class MainActivity : ComponentActivity() {
         repository = PlaylistRepository(AppDatabase.getInstance(this).channelDao())
 
         setContent {
-            MaterialTheme {
+            TribalTvTheme {
                 IptvApp(
                     playlistUrl = playlistUrl,
                     repository = repository,

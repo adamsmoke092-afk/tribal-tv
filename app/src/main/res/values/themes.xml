@@ -2,13 +2,15 @@
 <resources>
     <!--
       Launch/window theme only — everything on screen is Compose
-      (MaterialTheme), so no Material Components XML library is needed.
-      This just controls the window surface until the first frame draws
-      and keeps status/nav bars from flashing white in the dark app.
+      (TribalTvTheme). Platform dark base, NOT Theme.Material3.*: that
+      parent ships in the Material Components XML library, which this app
+      deliberately has no dependency on — using it would fail resource
+      linking. Stops a white flash at launch and keeps the bars dark.
     -->
     <style name="Theme.TribalTV" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/brand_background</item>
         <item name="android:statusBarColor">@color/brand_background</item>
         <item name="android:navigationBarColor">@color/brand_background</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>
