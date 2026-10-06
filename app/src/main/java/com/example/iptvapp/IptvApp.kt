@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 fun IptvApp(
     initialPlaylistUrl: String,
     settings: SettingsStore,
+    favouritesStore: FavouritesStore,
     repository: PlaylistRepository,
     player: ExoPlayer
 ) {
@@ -38,6 +39,7 @@ fun IptvApp(
     var hideGeoBlocked by remember { mutableStateOf(settings.hideGeoBlocked()) }
     var hideNot24x7 by remember { mutableStateOf(settings.hideNot24x7()) }
     var hdOnly by remember { mutableStateOf(settings.hdOnly()) }
+    var favourites by remember { mutableStateOf(favouritesStore.favourites()) }
     var showSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -58,6 +60,10 @@ fun IptvApp(
             hideGeoBlocked = hideGeoBlocked,
             hideNot24x7 = hideNot24x7,
             hdOnly = hdOnly,
+            favourites = favourites,
+            onToggleFavourite = { channel ->
+                favourites = favouritesStore.toggle(channel.streamUrl)
+            },
             onChannelSelected = { channel ->
                 PlayerFactory.loadChannel(player, channel.streamUrl)
                 selectedChannel = channel

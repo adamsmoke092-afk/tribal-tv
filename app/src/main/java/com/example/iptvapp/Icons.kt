@@ -6,6 +6,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 
 /**
  * The app's icon set — all from material-icons-core (no extended pack:
@@ -19,4 +21,6 @@ object TribalIcons {
     val Close = Icons.Filled.Close
     val Settings = Icons.Filled.Settings
     val Refresh = Icons.Filled.Refresh
+    val Star = Icons.Filled.Star
+    val StarBorder = Icons.Filled.StarBorder
 }

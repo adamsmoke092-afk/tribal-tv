@@ -11,17 +11,16 @@ import com.example.iptvapp.playlist.PlaylistRepository
 
 /**
  * Single-activity entry point (SPEC §2.4). Creates the player, the
- * playlist repository, and the settings store once, then hands them to
- * the Compose tree — no navigation library, just a state toggle in
- * IptvApp.kt between "channel list" and "player". The default playlist
- * URL (and the logo switch) live in SettingsStore; the settings dialog
- * owns changing them.
+ * playlist repository, the settings store, and the favourites store once,
+ * then hands them to the Compose tree — no navigation library, just a
+ * state toggle in IptvApp.kt between "channel list" and "player".
  */
 class MainActivity : ComponentActivity() {
 
     private lateinit var player: ExoPlayer
     private lateinit var repository: PlaylistRepository
     private lateinit var settings: SettingsStore
+    private lateinit var favouritesStore: FavouritesStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,12 +37,14 @@ class MainActivity : ComponentActivity() {
         player = PlayerFactory.create(this)
         repository = PlaylistRepository(AppDatabase.getInstance(this).channelDao())
         settings = SettingsStore(this)
+        favouritesStore = FavouritesStore(this)
 
         setContent {
             TribalTvTheme {
                 IptvApp(
                     initialPlaylistUrl = settings.playlistUrl(),
                     settings = settings,
+                    favouritesStore = favouritesStore,
                     repository = repository,
                     player = player
                 )

@@ -68,6 +68,8 @@ fun ChannelListScreen(
     hideGeoBlocked: Boolean,
     hideNot24x7: Boolean,
     hdOnly: Boolean,
+    favourites: Set<String>,
+    onToggleFavourite: (M3uChannel) -> Unit,
     onChannelSelected: (M3uChannel) -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit
@@ -184,20 +186,26 @@ fun ChannelListScreen(
                     )
                 }
             } else {
-                val grouped = remember(visible) { groupChannels(visible) }
+                val grouped = remember(visible, favourites) {
+                    withFavouritesGroupFirst(groupChannels(visible), favourites)
+                }
                 LazyColumn {
-                    grouped.forEach { (group, groupChannels) ->
-                        // Prefixed keys so a header can never collide with a channel key.
-                        item(key = "hdr:$group") {
+                    grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
+                        // Index-based keys: the synthetic Favourites group could
+                        // share a name with a real category, and name-based keys
+                        // would then collide and crash the list.
+                        item(key = "hdr:$groupIndex") {
                             GroupHeader(name = group, count = groupChannels.size)
                         }
                         items(
                             items = groupChannels,
-                            key = { channel -> "ch:$group|${channel.streamUrl}" }
+                            key = { channel -> "ch:$groupIndex|${channel.streamUrl}" }
                         ) { channel ->
                             ChannelRow(
                                 channel = channel,
                                 showLogos = showLogos,
+                                isFavourite = channel.streamUrl in favourites,
+                                onToggleFavourite = { onToggleFavourite(channel) },
                                 onClick = { onChannelSelected(channel) }
                             )
                             HorizontalDivider(
@@ -237,7 +245,13 @@ private fun GroupHeader(name: String, count: Int) {
 
 @OptIn(ExperimentalLayoutApi::class) // FlowRow — stable or experimental depending on foundation version; opt-in covers both
 @Composable
-private fun ChannelRow(channel: M3uChannel, showLogos: Boolean, onClick: () -> Unit) {
+private fun ChannelRow(
+    channel: M3uChannel,
+    showLogos: Boolean,
+    isFavourite: Boolean,
+    onToggleFavourite: () -> Unit,
+    onClick: () -> Unit
+) {
     val display = remember(channel.name) { parseDisplay(channel.name) }
     Row(
         modifier = Modifier
@@ -253,7 +267,7 @@ private fun ChannelRow(channel: M3uChannel, showLogos: Boolean, onClick: () -> U
             fallbackName = display.cleanName
         )
         Spacer(Modifier.width(12.dp))
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(
                 text = display.cleanName,
                 fontSize = 15.sp,
@@ -270,6 +284,14 @@ private fun ChannelRow(channel: M3uChannel, showLogos: Boolean, onClick: () -> U
                     display.tags.forEach { Chip(text = it, accent = true) }
                 }
             }
+        }
+        IconButton(onClick = onToggleFavourite) {
+            Icon(
+                imageVector = if (isFavourite) TribalIcons.Star else TribalIcons.StarBorder,
+                contentDescription = if (isFavourite) "Remove favourite" else "Add favourite",
+                tint = if (isFavourite) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
