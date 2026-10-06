@@ -28,6 +28,7 @@ fun IptvApp(
     initialPlaylistUrl: String,
     settings: SettingsStore,
     favouritesStore: FavouritesStore,
+    recentsStore: RecentsStore,
     repository: PlaylistRepository,
     player: ExoPlayer
 ) {
@@ -40,6 +41,8 @@ fun IptvApp(
     var hideNot24x7 by remember { mutableStateOf(settings.hideNot24x7()) }
     var hdOnly by remember { mutableStateOf(settings.hdOnly()) }
     var favourites by remember { mutableStateOf(favouritesStore.favourites()) }
+    var recents by remember { mutableStateOf(recentsStore.recents()) }
+    var resumedLast by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -49,6 +52,18 @@ fun IptvApp(
         } catch (e: Exception) {
             loadError = "Failed to load playlist: ${e.message}"
         }
+    }
+
+    // Reopen the last-watched channel once per session, only if it's still
+    // in the current playlist. Fires when the channel list arrives (cache
+    // or network); the guard keeps a refresh from re-opening the player.
+    LaunchedEffect(channels) {
+        if (resumedLast || channels.isEmpty()) return@LaunchedEffect
+        resumedLast = true
+        val lastUrl = recents.firstOrNull() ?: return@LaunchedEffect
+        val last = channels.firstOrNull { it.streamUrl == lastUrl } ?: return@LaunchedEffect
+        PlayerFactory.loadChannel(player, last.streamUrl)
+        selectedChannel = last
     }
 
     val current = selectedChannel
@@ -61,12 +76,15 @@ fun IptvApp(
             hideNot24x7 = hideNot24x7,
             hdOnly = hdOnly,
             favourites = favourites,
+            recents = recents,
             onToggleFavourite = { channel ->
                 favourites = favouritesStore.toggle(channel.streamUrl)
             },
             onChannelSelected = { channel ->
                 PlayerFactory.loadChannel(player, channel.streamUrl)
                 selectedChannel = channel
+                recentsStore.add(channel.streamUrl)
+                recents = recentsStore.recents()
             },
             onRefresh = {
                 scope.launch {

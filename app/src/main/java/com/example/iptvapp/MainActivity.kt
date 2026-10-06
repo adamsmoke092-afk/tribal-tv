@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var repository: PlaylistRepository
     private lateinit var settings: SettingsStore
     private lateinit var favouritesStore: FavouritesStore
+    private lateinit var recentsStore: RecentsStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +39,7 @@ class MainActivity : ComponentActivity() {
         repository = PlaylistRepository(AppDatabase.getInstance(this).channelDao())
         settings = SettingsStore(this)
         favouritesStore = FavouritesStore(this)
+        recentsStore = RecentsStore(this)
 
         setContent {
             TribalTvTheme {
@@ -45,6 +47,7 @@ class MainActivity : ComponentActivity() {
                     initialPlaylistUrl = settings.playlistUrl(),
                     settings = settings,
                     favouritesStore = favouritesStore,
+                    recentsStore = recentsStore,
                     repository = repository,
                     player = player
                 )

@@ -69,6 +69,7 @@ fun ChannelListScreen(
     hideNot24x7: Boolean,
     hdOnly: Boolean,
     favourites: Set<String>,
+    recents: List<String>,
     onToggleFavourite: (M3uChannel) -> Unit,
     onChannelSelected: (M3uChannel) -> Unit,
     onRefresh: () -> Unit,
@@ -186,8 +187,11 @@ fun ChannelListScreen(
                     )
                 }
             } else {
-                val grouped = remember(visible, favourites) {
-                    withFavouritesGroupFirst(groupChannels(visible), favourites)
+                val grouped = remember(visible, favourites, recents) {
+                    withRecentsGroup(
+                        withFavouritesGroupFirst(groupChannels(visible), favourites),
+                        recents
+                    )
                 }
                 LazyColumn {
                     grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
