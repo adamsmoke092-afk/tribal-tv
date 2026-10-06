@@ -31,9 +31,21 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 /**
- * Settings dialog (feature batch step 4): playlist URL + logo switch.
- * Saving a changed URL fetches and parses the new playlist BEFORE the
- * persisted URL or the Room cache is touched — a bad URL or an empty
+ * The whole settings payload in one object, so the dialog can hand the
+ * save handler a single value instead of five loose parameters.
+ */
+data class SettingsDraft(
+    val playlistUrl: String,
+    val showLogos: Boolean,
+    val hideGeoBlocked: Boolean,
+    val hideNot24x7: Boolean,
+    val hdOnly: Boolean
+)
+
+/**
+ * Settings dialog: playlist URL, logo switch, and the list-visibility
+ * filters. Saving a changed URL fetches and parses the new playlist BEFORE
+ * the persisted URL or the Room cache is touched — a bad URL or an empty
  * playlist leaves everything exactly as it was, with the error shown
  * inline under the field.
  */
@@ -42,11 +54,17 @@ import kotlinx.coroutines.launch
 fun SettingsDialog(
     currentUrl: String,
     initialShowLogos: Boolean,
+    initialHideGeoBlocked: Boolean,
+    initialHideNot24x7: Boolean,
+    initialHdOnly: Boolean,
     onDismiss: () -> Unit,
-    onSave: suspend (newUrl: String, showLogos: Boolean) -> String?
+    onSave: suspend (SettingsDraft) -> String?
 ) {
     var urlText by remember { mutableStateOf(currentUrl) }
     var showLogos by remember { mutableStateOf(initialShowLogos) }
+    var hideGeoBlocked by remember { mutableStateOf(initialHideGeoBlocked) }
+    var hideNot24x7 by remember { mutableStateOf(initialHideNot24x7) }
+    var hdOnly by remember { mutableStateOf(initialHdOnly) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -101,25 +119,10 @@ fun SettingsDialog(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Show channel logos",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = showLogos,
-                        onCheckedChange = { showLogos = it },
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary
-                        )
-                    )
-                }
+                SettingSwitch("Show channel logos", showLogos) { showLogos = it }
+                SettingSwitch("Hide geo-blocked", hideGeoBlocked) { hideGeoBlocked = it }
+                SettingSwitch("Hide Not 24/7", hideNot24x7) { hideNot24x7 = it }
+                SettingSwitch("HD only (720p+)", hdOnly) { hdOnly = it }
                 if (isSaving) {
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -148,7 +151,15 @@ fun SettingsDialog(
                     } else {
                         scope.launch {
                             isSaving = true
-                            val error = onSave(trimmed, showLogos)
+                            val error = onSave(
+                                SettingsDraft(
+                                    playlistUrl = trimmed,
+                                    showLogos = showLogos,
+                                    hideGeoBlocked = hideGeoBlocked,
+                                    hideNot24x7 = hideNot24x7,
+                                    hdOnly = hdOnly
+                                )
+                            )
                             isSaving = false
                             if (error == null) onDismiss() else errorText = error
                         }
@@ -167,4 +178,27 @@ fun SettingsDialog(
             }
         }
     )
+}
+
+@Composable
+private fun SettingSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary
+            )
+        )
+    }
 }

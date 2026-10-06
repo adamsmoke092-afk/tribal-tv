@@ -72,3 +72,40 @@ fun filterChannels(query: String, channels: List<M3uChannel>): List<M3uChannel> 
             categoriesForGroupTitle(channel.groupTitle).any { it.lowercase().contains(needle) }
     }
 }
+
+/** True if the channel carries the given tag, ignoring case. */
+fun hasTag(display: ChannelDisplay, tag: String): Boolean =
+    display.tags.any { it.equals(tag, ignoreCase = true) }
+
+/** "720p" and up counts as HD. Unknown/unparsed quality is not HD. */
+fun isHd(quality: String?): Boolean {
+    val height = quality?.removeSuffix("p")?.toIntOrNull() ?: return false
+    return height >= 720
+}
+
+/**
+ * Applies the user's list-visibility filters. Every filter is opt-in, so
+ * with all three off this returns the input list unchanged (same
+ * instance — cheap fast path for the common case).
+ *
+ * hdOnly only drops channels whose quality token parsed AND is below 720p;
+ * a channel with no quality token is kept, since we can't know its
+ * resolution and dropping it would hide most of the playlist.
+ */
+fun applyFilters(
+    channels: List<M3uChannel>,
+    hideGeoBlocked: Boolean,
+    hideNot24x7: Boolean,
+    hdOnly: Boolean
+): List<M3uChannel> {
+    if (!hideGeoBlocked && !hideNot24x7 && !hdOnly) return channels
+    return channels.filter { channel ->
+        val display = parseDisplay(channel.name)
+        when {
+            hideGeoBlocked && hasTag(display, "Geo-blocked") -> false
+            hideNot24x7 && hasTag(display, "Not 24/7") -> false
+            hdOnly && display.quality != null && !isHd(display.quality) -> false
+            else -> true
+        }
+    }
+}

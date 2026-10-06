@@ -6,8 +6,9 @@ import java.net.URI
 
 /**
  * App settings over SharedPreferences (spec: no DataStore, no new deps).
- * Two keys: playlist_url (falls back to DEFAULT_PLAYLIST_URL) and
- * show_logos (default true; consumed by the channel-logo feature).
+ * Keys: playlist_url (falls back to DEFAULT_PLAYLIST_URL), show_logos,
+ * and the three list-visibility filters (all default off, so behaviour is
+ * unchanged until the user opts in).
  */
 class SettingsStore(context: Context) {
 
@@ -27,11 +28,32 @@ class SettingsStore(context: Context) {
         prefs.edit().putBoolean(KEY_SHOW_LOGOS, show).apply()
     }
 
+    fun hideGeoBlocked(): Boolean = prefs.getBoolean(KEY_HIDE_GEO_BLOCKED, false)
+
+    fun setHideGeoBlocked(hide: Boolean) {
+        prefs.edit().putBoolean(KEY_HIDE_GEO_BLOCKED, hide).apply()
+    }
+
+    fun hideNot24x7(): Boolean = prefs.getBoolean(KEY_HIDE_NOT_24X7, false)
+
+    fun setHideNot24x7(hide: Boolean) {
+        prefs.edit().putBoolean(KEY_HIDE_NOT_24X7, hide).apply()
+    }
+
+    fun hdOnly(): Boolean = prefs.getBoolean(KEY_HD_ONLY, false)
+
+    fun setHdOnly(hdOnly: Boolean) {
+        prefs.edit().putBoolean(KEY_HD_ONLY, hdOnly).apply()
+    }
+
     companion object {
         const val DEFAULT_PLAYLIST_URL = "https://iptv-org.github.io/iptv/countries/za.m3u"
 
         private const val KEY_PLAYLIST_URL = "playlist_url"
         private const val KEY_SHOW_LOGOS = "show_logos"
+        private const val KEY_HIDE_GEO_BLOCKED = "hide_geo_blocked"
+        private const val KEY_HIDE_NOT_24X7 = "hide_not_24x7"
+        private const val KEY_HD_ONLY = "hd_only"
     }
 }
 

@@ -2,7 +2,9 @@ package com.example.iptvapp
 
 import com.example.iptvapp.playlist.M3uChannel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -130,5 +132,70 @@ class ChannelDisplayTest {
     fun `query is trimmed and matches the clean name`() {
         val channels = listOf(M3uChannel("SABC 2 (576p)", "http://a", groupTitle = "News"))
         assertEquals(1, filterChannels("  sabc 2  ", channels).size)
+    }
+
+    @Test
+    fun `isHd is true only at 720 and above`() {
+        assertTrue(isHd("720p"))
+        assertTrue(isHd("1080p"))
+        assertFalse(isHd("576p"))
+        assertFalse(isHd(null))
+    }
+
+    @Test
+    fun `hasTag ignores case`() {
+        val d = parseDisplay("X [geo-BLOCKED]")
+        assertTrue(hasTag(d, "Geo-blocked"))
+        assertFalse(hasTag(d, "Not 24/7"))
+    }
+
+    @Test
+    fun `all filters off returns the same list instance`() {
+        val channels = listOf(M3uChannel("A", "http://a"))
+        assertSame(channels, applyFilters(channels, hideGeoBlocked = false, hideNot24x7 = false, hdOnly = false))
+    }
+
+    @Test
+    fun `hideGeoBlocked drops only geo-blocked channels`() {
+        val channels = listOf(
+            M3uChannel("A [Geo-blocked]", "http://a"),
+            M3uChannel("B", "http://b")
+        )
+        val result = applyFilters(channels, hideGeoBlocked = true, hideNot24x7 = false, hdOnly = false)
+        assertEquals(listOf("B"), result.map { it.name })
+    }
+
+    @Test
+    fun `hideNot24x7 drops only not-24-7 channels`() {
+        val channels = listOf(
+            M3uChannel("A [Not 24/7]", "http://a"),
+            M3uChannel("B", "http://b")
+        )
+        val result = applyFilters(channels, hideGeoBlocked = false, hideNot24x7 = true, hdOnly = false)
+        assertEquals(listOf("B"), result.map { it.name })
+    }
+
+    @Test
+    fun `hdOnly drops sub-720 but keeps 720+, and keeps unknown quality`() {
+        val channels = listOf(
+            M3uChannel("SD (576p)", "http://a"),
+            M3uChannel("HD (720p)", "http://b"),
+            M3uChannel("FHD (1080p)", "http://c"),
+            M3uChannel("NoToken", "http://d")
+        )
+        val result = applyFilters(channels, hideGeoBlocked = false, hideNot24x7 = false, hdOnly = true)
+        assertEquals(listOf("HD (720p)", "FHD (1080p)", "NoToken"), result.map { it.name })
+    }
+
+    @Test
+    fun `filters combine`() {
+        val channels = listOf(
+            M3uChannel("A (576p) [Geo-blocked]", "http://a"),
+            M3uChannel("B (1080p) [Geo-blocked]", "http://b"),
+            M3uChannel("C (576p)", "http://c"),
+            M3uChannel("D (1080p)", "http://d")
+        )
+        val result = applyFilters(channels, hideGeoBlocked = true, hideNot24x7 = false, hdOnly = true)
+        assertEquals(listOf("D (1080p)"), result.map { it.name })
     }
 }

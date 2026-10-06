@@ -35,6 +35,9 @@ fun IptvApp(
     var loadError by remember { mutableStateOf<String?>(null) }
     var playlistUrl by remember { mutableStateOf(initialPlaylistUrl) }
     var showLogos by remember { mutableStateOf(settings.showLogos()) }
+    var hideGeoBlocked by remember { mutableStateOf(settings.hideGeoBlocked()) }
+    var hideNot24x7 by remember { mutableStateOf(settings.hideNot24x7()) }
+    var hdOnly by remember { mutableStateOf(settings.hdOnly()) }
     var showSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -52,6 +55,9 @@ fun IptvApp(
             channels = channels,
             error = loadError,
             showLogos = showLogos,
+            hideGeoBlocked = hideGeoBlocked,
+            hideNot24x7 = hideNot24x7,
+            hdOnly = hdOnly,
             onChannelSelected = { channel ->
                 PlayerFactory.loadChannel(player, channel.streamUrl)
                 selectedChannel = channel
@@ -73,20 +79,35 @@ fun IptvApp(
             SettingsDialog(
                 currentUrl = playlistUrl,
                 initialShowLogos = showLogos,
+                initialHideGeoBlocked = hideGeoBlocked,
+                initialHideNot24x7 = hideNot24x7,
+                initialHdOnly = hdOnly,
                 onDismiss = { showSettings = false },
-                onSave = { newUrl, newShowLogos ->
+                onSave = { draft ->
                     try {
-                        if (newUrl != playlistUrl) {
+                        if (draft.playlistUrl != playlistUrl) {
                             // Throws before the Room cache is replaced if the
                             // fetch fails or the playlist parses to nothing.
-                            val loaded = repository.refreshChannels(newUrl)
+                            val loaded = repository.refreshChannels(draft.playlistUrl)
                             channels = loaded
-                            playlistUrl = newUrl
-                            settings.setPlaylistUrl(newUrl)
+                            playlistUrl = draft.playlistUrl
+                            settings.setPlaylistUrl(draft.playlistUrl)
                         }
-                        if (newShowLogos != showLogos) {
-                            showLogos = newShowLogos
-                            settings.setShowLogos(newShowLogos)
+                        if (draft.showLogos != showLogos) {
+                            showLogos = draft.showLogos
+                            settings.setShowLogos(draft.showLogos)
+                        }
+                        if (draft.hideGeoBlocked != hideGeoBlocked) {
+                            hideGeoBlocked = draft.hideGeoBlocked
+                            settings.setHideGeoBlocked(draft.hideGeoBlocked)
+                        }
+                        if (draft.hideNot24x7 != hideNot24x7) {
+                            hideNot24x7 = draft.hideNot24x7
+                            settings.setHideNot24x7(draft.hideNot24x7)
+                        }
+                        if (draft.hdOnly != hdOnly) {
+                            hdOnly = draft.hdOnly
+                            settings.setHdOnly(draft.hdOnly)
                         }
                         null
                     } catch (e: Exception) {

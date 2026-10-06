@@ -65,6 +65,9 @@ fun ChannelListScreen(
     channels: List<M3uChannel>,
     error: String?,
     showLogos: Boolean,
+    hideGeoBlocked: Boolean,
+    hideNot24x7: Boolean,
+    hdOnly: Boolean,
     onChannelSelected: (M3uChannel) -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit
@@ -165,12 +168,18 @@ fun ChannelListScreen(
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else {
-            val visible = remember(channels, searchQuery) { filterChannels(searchQuery, channels) }
+            val visible = remember(channels, searchQuery, hideGeoBlocked, hideNot24x7, hdOnly) {
+                filterChannels(
+                    searchQuery,
+                    applyFilters(channels, hideGeoBlocked, hideNot24x7, hdOnly)
+                )
+            }
 
             if (channels.isNotEmpty() && visible.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "No channels match",
+                        text = if (searchQuery.isBlank()) "No channels match your filters"
+                        else "No channels match",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
