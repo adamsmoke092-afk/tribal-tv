@@ -38,11 +38,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.example.iptvapp.playlist.M3uChannel
 
 /**
@@ -60,6 +64,7 @@ import com.example.iptvapp.playlist.M3uChannel
 fun ChannelListScreen(
     channels: List<M3uChannel>,
     error: String?,
+    showLogos: Boolean,
     onChannelSelected: (M3uChannel) -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit
@@ -183,6 +188,7 @@ fun ChannelListScreen(
                         ) { channel ->
                             ChannelRow(
                                 channel = channel,
+                                showLogos = showLogos,
                                 onClick = { onChannelSelected(channel) }
                             )
                             HorizontalDivider(
@@ -222,7 +228,7 @@ private fun GroupHeader(name: String, count: Int) {
 
 @OptIn(ExperimentalLayoutApi::class) // FlowRow — stable or experimental depending on foundation version; opt-in covers both
 @Composable
-private fun ChannelRow(channel: M3uChannel, onClick: () -> Unit) {
+private fun ChannelRow(channel: M3uChannel, showLogos: Boolean, onClick: () -> Unit) {
     val display = remember(channel.name) { parseDisplay(channel.name) }
     Row(
         modifier = Modifier
@@ -232,7 +238,11 @@ private fun ChannelRow(channel: M3uChannel, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        LetterAvatar(display.cleanName)
+        ChannelAvatar(
+            logoUrl = channel.logoUrl,
+            showLogos = showLogos,
+            fallbackName = display.cleanName
+        )
         Spacer(Modifier.width(12.dp))
         Column {
             Text(
@@ -270,6 +280,34 @@ private fun LetterAvatar(name: String) {
             fontWeight = FontWeight.Medium,
             color = TribalAccentTintText
         )
+    }
+}
+
+/**
+ * 40dp slot: the letter avatar is always the base layer, so it shows while
+ * a logo loads, and remains if the load fails. The logo is drawn on top
+ * only when logos are enabled and the channel has one. Sizing the request
+ * to 80dp keeps the bitmap crisp on 2x screens and tiny on the wire.
+ */
+@Composable
+private fun ChannelAvatar(logoUrl: String?, showLogos: Boolean, fallbackName: String) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(10.dp))
+    ) {
+        LetterAvatar(fallbackName)
+        if (showLogos && !logoUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(logoUrl)
+                    .size(80, 80)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
 

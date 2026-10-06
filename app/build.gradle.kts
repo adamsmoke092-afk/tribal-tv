@@ -60,6 +60,12 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
+    // Channel logos. Coil 3.0.4, NOT latest: 3.6.3 is built with Kotlin
+    // 2.4.10 and 3.1.0 with 2.1.10, both unreadable by our Kotlin 2.0.20;
+    // 3.0.4 was built with 2.0.21 — the same 2.0.x line.
+    implementation("io.coil-kt.coil3:coil-compose:3.0.4")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
+
     // JVM unit tests only — nothing from this line lands in the APK.
     testImplementation("junit:junit:4.13.2")
 }

@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.media3.exoplayer.ExoPlayer
+import coil3.SingletonImageLoader
 import com.example.iptvapp.player.PlayerFactory
 import com.example.iptvapp.playlist.AppDatabase
 import com.example.iptvapp.playlist.PlaylistRepository
@@ -24,6 +25,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        try {
+            // Pass applicationContext (a plain android.content.Context)
+            // rather than the factory's PlatformContext param, so the
+            // signature can't depend on how Coil aliases that type.
+            SingletonImageLoader.setSafe { buildImageLoader(applicationContext) }
+        } catch (ignored: IllegalStateException) {
+            // Singleton already configured on this process; reuse it.
+        }
 
         player = PlayerFactory.create(this)
         repository = PlaylistRepository(AppDatabase.getInstance(this).channelDao())

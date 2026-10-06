@@ -51,6 +51,7 @@ fun IptvApp(
         ChannelListScreen(
             channels = channels,
             error = loadError,
+            showLogos = showLogos,
             onChannelSelected = { channel ->
                 PlayerFactory.loadChannel(player, channel.streamUrl)
                 selectedChannel = channel
