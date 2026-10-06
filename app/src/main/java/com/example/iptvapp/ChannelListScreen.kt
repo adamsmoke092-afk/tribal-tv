@@ -287,7 +287,7 @@ private fun ChannelRow(
         }
         IconButton(onClick = onToggleFavourite) {
             Icon(
-                imageVector = if (isFavourite) TribalIcons.Star else TribalIcons.StarBorder,
+                imageVector = TribalIcons.Star,
                 contentDescription = if (isFavourite) "Remove favourite" else "Add favourite",
                 tint = if (isFavourite) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant
