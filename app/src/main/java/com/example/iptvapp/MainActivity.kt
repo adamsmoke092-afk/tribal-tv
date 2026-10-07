@@ -43,6 +43,8 @@ class MainActivity : ComponentActivity() {
         recentsStore = RecentsStore(this)
         deadStore = DeadChannelStore(this)
 
+        applyPlaybackPreferences(player, settings.dataSaver(), settings.audioOnly())
+
         setContent {
             TribalTvTheme {
                 IptvApp(

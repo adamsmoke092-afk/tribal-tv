@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The whole settings payload in one object, so the dialog can hand the
- * save handler a single value instead of five loose parameters.
+ * save handler a single value instead of loose parameters.
  */
 data class SettingsDraft(
     val playlistUrl: String,
@@ -40,7 +40,9 @@ data class SettingsDraft(
     val hideGeoBlocked: Boolean,
     val hideNot24x7: Boolean,
     val hdOnly: Boolean,
-    val resumeOnLaunch: Boolean
+    val resumeOnLaunch: Boolean,
+    val dataSaver: Boolean,
+    val audioOnly: Boolean
 )
 
 /**
@@ -59,6 +61,8 @@ fun SettingsDialog(
     initialHideNot24x7: Boolean,
     initialHdOnly: Boolean,
     initialResumeOnLaunch: Boolean,
+    initialDataSaver: Boolean,
+    initialAudioOnly: Boolean,
     onDismiss: () -> Unit,
     onSave: suspend (SettingsDraft) -> String?
 ) {
@@ -68,6 +72,8 @@ fun SettingsDialog(
     var hideNot24x7 by remember { mutableStateOf(initialHideNot24x7) }
     var hdOnly by remember { mutableStateOf(initialHdOnly) }
     var resumeOnLaunch by remember { mutableStateOf(initialResumeOnLaunch) }
+    var dataSaver by remember { mutableStateOf(initialDataSaver) }
+    var audioOnly by remember { mutableStateOf(initialAudioOnly) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -123,6 +129,8 @@ fun SettingsDialog(
                     )
                 }
                 SettingSwitch("Resume last channel on launch", resumeOnLaunch) { resumeOnLaunch = it }
+                SettingSwitch("Data saver (cap video quality)", dataSaver) { dataSaver = it }
+                SettingSwitch("Audio only (play sound, no video)", audioOnly) { audioOnly = it }
                 SettingSwitch("Show channel logos", showLogos) { showLogos = it }
                 SettingSwitch("Hide geo-blocked", hideGeoBlocked) { hideGeoBlocked = it }
                 SettingSwitch("Hide Not 24/7", hideNot24x7) { hideNot24x7 = it }
@@ -162,7 +170,9 @@ fun SettingsDialog(
                                     hideGeoBlocked = hideGeoBlocked,
                                     hideNot24x7 = hideNot24x7,
                                     hdOnly = hdOnly,
-                                    resumeOnLaunch = resumeOnLaunch
+                                    resumeOnLaunch = resumeOnLaunch,
+                                    dataSaver = dataSaver,
+                                    audioOnly = audioOnly
                                 )
                             )
                             isSaving = false

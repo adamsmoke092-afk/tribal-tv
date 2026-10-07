@@ -7,8 +7,9 @@ import java.net.URI
 /**
  * App settings over SharedPreferences (spec: no DataStore, no new deps).
  * Keys: playlist_url (falls back to DEFAULT_PLAYLIST_URL), show_logos,
- * and the three list-visibility filters (all default off, so behaviour is
- * unchanged until the user opts in).
+ * the three list-visibility filters, resume_on_launch, data_saver and
+ * audio_only — all default off, so behaviour is unchanged until the user
+ * opts in.
  */
 class SettingsStore(context: Context) {
 
@@ -52,6 +53,18 @@ class SettingsStore(context: Context) {
         prefs.edit().putBoolean(KEY_RESUME_ON_LAUNCH, resume).apply()
     }
 
+    fun dataSaver(): Boolean = prefs.getBoolean(KEY_DATA_SAVER, false)
+
+    fun setDataSaver(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_DATA_SAVER, enabled).apply()
+    }
+
+    fun audioOnly(): Boolean = prefs.getBoolean(KEY_AUDIO_ONLY, false)
+
+    fun setAudioOnly(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUDIO_ONLY, enabled).apply()
+    }
+
     companion object {
         const val DEFAULT_PLAYLIST_URL = "https://iptv-org.github.io/iptv/countries/za.m3u"
 
@@ -61,6 +74,8 @@ class SettingsStore(context: Context) {
         private const val KEY_HIDE_NOT_24X7 = "hide_not_24x7"
         private const val KEY_HD_ONLY = "hd_only"
         private const val KEY_RESUME_ON_LAUNCH = "resume_on_launch"
+        private const val KEY_DATA_SAVER = "data_saver"
+        private const val KEY_AUDIO_ONLY = "audio_only"
     }
 }
 

@@ -45,6 +45,8 @@ fun IptvApp(
     var recents by remember { mutableStateOf(recentsStore.recents()) }
     var deadChannels by remember { mutableStateOf(deadStore.dead()) }
     var resumeOnLaunch by remember { mutableStateOf(settings.resumeOnLaunch()) }
+    var dataSaver by remember { mutableStateOf(settings.dataSaver()) }
+    var audioOnly by remember { mutableStateOf(settings.audioOnly()) }
     var resumedLast by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -112,6 +114,8 @@ fun IptvApp(
                 initialHideNot24x7 = hideNot24x7,
                 initialHdOnly = hdOnly,
                 initialResumeOnLaunch = resumeOnLaunch,
+                initialDataSaver = dataSaver,
+                initialAudioOnly = audioOnly,
                 onDismiss = { showSettings = false },
                 onSave = { draft ->
                     try {
@@ -143,6 +147,13 @@ fun IptvApp(
                             resumeOnLaunch = draft.resumeOnLaunch
                             settings.setResumeOnLaunch(draft.resumeOnLaunch)
                         }
+                        if (draft.dataSaver != dataSaver || draft.audioOnly != audioOnly) {
+                            dataSaver = draft.dataSaver
+                            audioOnly = draft.audioOnly
+                            settings.setDataSaver(dataSaver)
+                            settings.setAudioOnly(audioOnly)
+                            applyPlaybackPreferences(player, dataSaver, audioOnly)
+                        }
                         null
                     } catch (e: Exception) {
                         e.message ?: "Failed to load that playlist"
@@ -155,7 +166,9 @@ fun IptvApp(
             player = player,
             channelName = current.name,
             onPlaybackFailed = {
-                deadChannels = deadStore.mark(current.streamUrl)
+                // Audio-only mode fails on a stream with no audio track;
+                // that failure says nothing about the channel being dead.
+                if (!audioOnly) deadChannels = deadStore.mark(current.streamUrl)
             },
             onPlaybackSucceeded = {
                 if (current.streamUrl in deadChannels) {
