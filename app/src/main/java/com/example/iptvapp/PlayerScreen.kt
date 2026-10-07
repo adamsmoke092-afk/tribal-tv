@@ -59,12 +59,16 @@ import kotlinx.coroutines.delay
  * configChanges keeps the activity alive across rotation, so playback and
  * the selected channel survive; the header bar hides in landscape so the
  * video fills the screen; the error card gained a Retry button.
- * Playback listeners, BackHandler and the buffering timer are unchanged.
+ * Playback listeners, BackHandler and the buffering timer keep their
+ * behavior; the listeners now also report success/failure so channels
+ * that fail get remembered and dimmed in the list.
  */
 @Composable
 fun PlayerScreen(
     player: ExoPlayer,
     channelName: String,
+    onPlaybackFailed: () -> Unit,
+    onPlaybackSucceeded: () -> Unit,
     onBack: () -> Unit
 ) {
     var isBuffering by remember { mutableStateOf(false) }
@@ -84,7 +88,12 @@ fun PlayerScreen(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
-                if (playbackState == Player.STATE_READY) statusMessage = null
+                if (playbackState == Player.STATE_READY) {
+                    statusMessage = null
+                    // A "dead" channel that plays again is forgiven — the
+                    // dead-channel memory self-heals.
+                    onPlaybackSucceeded()
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -93,6 +102,7 @@ fun PlayerScreen(
                 // or an unsupported format) gets a visible message instead
                 // of a silently stuck screen.
                 statusMessage = "This channel isn't playable right now (${error.errorCodeName})."
+                onPlaybackFailed()
             }
         }
         player.addListener(listener)

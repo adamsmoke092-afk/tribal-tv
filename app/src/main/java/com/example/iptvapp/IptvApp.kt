@@ -29,6 +29,7 @@ fun IptvApp(
     settings: SettingsStore,
     favouritesStore: FavouritesStore,
     recentsStore: RecentsStore,
+    deadStore: DeadChannelStore,
     repository: PlaylistRepository,
     player: ExoPlayer
 ) {
@@ -42,6 +43,7 @@ fun IptvApp(
     var hdOnly by remember { mutableStateOf(settings.hdOnly()) }
     var favourites by remember { mutableStateOf(favouritesStore.favourites()) }
     var recents by remember { mutableStateOf(recentsStore.recents()) }
+    var deadChannels by remember { mutableStateOf(deadStore.dead()) }
     var resumedLast by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -77,6 +79,7 @@ fun IptvApp(
             hdOnly = hdOnly,
             favourites = favourites,
             recents = recents,
+            deadChannels = deadChannels,
             onToggleFavourite = { channel ->
                 favourites = favouritesStore.toggle(channel.streamUrl)
             },
@@ -144,6 +147,14 @@ fun IptvApp(
         PlayerScreen(
             player = player,
             channelName = current.name,
+            onPlaybackFailed = {
+                deadChannels = deadStore.mark(current.streamUrl)
+            },
+            onPlaybackSucceeded = {
+                if (current.streamUrl in deadChannels) {
+                    deadChannels = deadStore.clear(current.streamUrl)
+                }
+            },
             onBack = {
                 player.stop()
                 selectedChannel = null

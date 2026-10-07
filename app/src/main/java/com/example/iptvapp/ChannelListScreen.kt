@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -70,6 +71,7 @@ fun ChannelListScreen(
     hdOnly: Boolean,
     favourites: Set<String>,
     recents: List<String>,
+    deadChannels: Set<String>,
     onToggleFavourite: (M3uChannel) -> Unit,
     onChannelSelected: (M3uChannel) -> Unit,
     onRefresh: () -> Unit,
@@ -209,6 +211,7 @@ fun ChannelListScreen(
                                 channel = channel,
                                 showLogos = showLogos,
                                 isFavourite = channel.streamUrl in favourites,
+                                isDead = channel.streamUrl in deadChannels,
                                 onToggleFavourite = { onToggleFavourite(channel) },
                                 onClick = { onChannelSelected(channel) }
                             )
@@ -253,10 +256,14 @@ private fun ChannelRow(
     channel: M3uChannel,
     showLogos: Boolean,
     isFavourite: Boolean,
+    isDead: Boolean,
     onToggleFavourite: () -> Unit,
     onClick: () -> Unit
 ) {
     val display = remember(channel.name) { parseDisplay(channel.name) }
+    // A channel that failed before is dimmed, so retapping a dead link is
+    // a deliberate choice, not a surprise. Still fully playable.
+    val deadAlpha = if (isDead) 0.55f else 1f
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -265,19 +272,21 @@ private fun ChannelRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ChannelAvatar(
-            logoUrl = channel.logoUrl,
-            showLogos = showLogos,
-            fallbackName = display.cleanName
-        )
+        Box(Modifier.alpha(deadAlpha)) {
+            ChannelAvatar(
+                logoUrl = channel.logoUrl,
+                showLogos = showLogos,
+                fallbackName = display.cleanName
+            )
+        }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).alpha(deadAlpha)) {
             Text(
                 text = display.cleanName,
                 fontSize = 15.sp,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            if (display.quality != null || display.tags.isNotEmpty()) {
+            if (display.quality != null || display.tags.isNotEmpty() || isDead) {
                 Spacer(Modifier.height(6.dp))
                 // FlowRow so several tags wrap on narrow phones instead of clipping.
                 FlowRow(
@@ -286,6 +295,7 @@ private fun ChannelRow(
                 ) {
                     display.quality?.let { Chip(text = it, accent = false) }
                     display.tags.forEach { Chip(text = it, accent = true) }
+                    if (isDead) Chip(text = "May be dead", accent = false)
                 }
             }
         }

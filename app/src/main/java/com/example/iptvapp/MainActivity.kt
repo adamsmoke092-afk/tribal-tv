@@ -22,6 +22,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var settings: SettingsStore
     private lateinit var favouritesStore: FavouritesStore
     private lateinit var recentsStore: RecentsStore
+    private lateinit var deadStore: DeadChannelStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +41,7 @@ class MainActivity : ComponentActivity() {
         settings = SettingsStore(this)
         favouritesStore = FavouritesStore(this)
         recentsStore = RecentsStore(this)
+        deadStore = DeadChannelStore(this)
 
         setContent {
             TribalTvTheme {
@@ -48,6 +50,7 @@ class MainActivity : ComponentActivity() {
                     settings = settings,
                     favouritesStore = favouritesStore,
                     recentsStore = recentsStore,
+                    deadStore = deadStore,
                     repository = repository,
                     player = player
                 )
