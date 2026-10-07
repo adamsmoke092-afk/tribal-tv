@@ -46,6 +46,12 @@ class SettingsStore(context: Context) {
         prefs.edit().putBoolean(KEY_HD_ONLY, hdOnly).apply()
     }
 
+    fun resumeOnLaunch(): Boolean = prefs.getBoolean(KEY_RESUME_ON_LAUNCH, false)
+
+    fun setResumeOnLaunch(resume: Boolean) {
+        prefs.edit().putBoolean(KEY_RESUME_ON_LAUNCH, resume).apply()
+    }
+
     companion object {
         const val DEFAULT_PLAYLIST_URL = "https://iptv-org.github.io/iptv/countries/za.m3u"
 
@@ -54,6 +60,7 @@ class SettingsStore(context: Context) {
         private const val KEY_HIDE_GEO_BLOCKED = "hide_geo_blocked"
         private const val KEY_HIDE_NOT_24X7 = "hide_not_24x7"
         private const val KEY_HD_ONLY = "hd_only"
+        private const val KEY_RESUME_ON_LAUNCH = "resume_on_launch"
     }
 }
 

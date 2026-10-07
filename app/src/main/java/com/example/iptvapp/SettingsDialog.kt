@@ -39,7 +39,8 @@ data class SettingsDraft(
     val showLogos: Boolean,
     val hideGeoBlocked: Boolean,
     val hideNot24x7: Boolean,
-    val hdOnly: Boolean
+    val hdOnly: Boolean,
+    val resumeOnLaunch: Boolean
 )
 
 /**
@@ -57,6 +58,7 @@ fun SettingsDialog(
     initialHideGeoBlocked: Boolean,
     initialHideNot24x7: Boolean,
     initialHdOnly: Boolean,
+    initialResumeOnLaunch: Boolean,
     onDismiss: () -> Unit,
     onSave: suspend (SettingsDraft) -> String?
 ) {
@@ -65,6 +67,7 @@ fun SettingsDialog(
     var hideGeoBlocked by remember { mutableStateOf(initialHideGeoBlocked) }
     var hideNot24x7 by remember { mutableStateOf(initialHideNot24x7) }
     var hdOnly by remember { mutableStateOf(initialHdOnly) }
+    var resumeOnLaunch by remember { mutableStateOf(initialResumeOnLaunch) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -119,6 +122,7 @@ fun SettingsDialog(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+                SettingSwitch("Resume last channel on launch", resumeOnLaunch) { resumeOnLaunch = it }
                 SettingSwitch("Show channel logos", showLogos) { showLogos = it }
                 SettingSwitch("Hide geo-blocked", hideGeoBlocked) { hideGeoBlocked = it }
                 SettingSwitch("Hide Not 24/7", hideNot24x7) { hideNot24x7 = it }
@@ -157,7 +161,8 @@ fun SettingsDialog(
                                     showLogos = showLogos,
                                     hideGeoBlocked = hideGeoBlocked,
                                     hideNot24x7 = hideNot24x7,
-                                    hdOnly = hdOnly
+                                    hdOnly = hdOnly,
+                                    resumeOnLaunch = resumeOnLaunch
                                 )
                             )
                             isSaving = false

@@ -44,6 +44,7 @@ fun IptvApp(
     var favourites by remember { mutableStateOf(favouritesStore.favourites()) }
     var recents by remember { mutableStateOf(recentsStore.recents()) }
     var deadChannels by remember { mutableStateOf(deadStore.dead()) }
+    var resumeOnLaunch by remember { mutableStateOf(settings.resumeOnLaunch()) }
     var resumedLast by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -56,11 +57,12 @@ fun IptvApp(
         }
     }
 
-    // Reopen the last-watched channel once per session, only if it's still
-    // in the current playlist. Fires when the channel list arrives (cache
-    // or network); the guard keeps a refresh from re-opening the player.
+    // Reopen the last-watched channel once per session, only if the
+    // "Resume on launch" setting is on and the channel is still in the
+    // current playlist. Fires when the channel list arrives (cache or
+    // network); the guard keeps a refresh from re-opening the player.
     LaunchedEffect(channels) {
-        if (resumedLast || channels.isEmpty()) return@LaunchedEffect
+        if (resumedLast || !resumeOnLaunch || channels.isEmpty()) return@LaunchedEffect
         resumedLast = true
         val lastUrl = recents.firstOrNull() ?: return@LaunchedEffect
         val last = channels.firstOrNull { it.streamUrl == lastUrl } ?: return@LaunchedEffect
@@ -109,6 +111,7 @@ fun IptvApp(
                 initialHideGeoBlocked = hideGeoBlocked,
                 initialHideNot24x7 = hideNot24x7,
                 initialHdOnly = hdOnly,
+                initialResumeOnLaunch = resumeOnLaunch,
                 onDismiss = { showSettings = false },
                 onSave = { draft ->
                     try {
@@ -135,6 +138,10 @@ fun IptvApp(
                         if (draft.hdOnly != hdOnly) {
                             hdOnly = draft.hdOnly
                             settings.setHdOnly(draft.hdOnly)
+                        }
+                        if (draft.resumeOnLaunch != resumeOnLaunch) {
+                            resumeOnLaunch = draft.resumeOnLaunch
+                            settings.setResumeOnLaunch(draft.resumeOnLaunch)
                         }
                         null
                     } catch (e: Exception) {
