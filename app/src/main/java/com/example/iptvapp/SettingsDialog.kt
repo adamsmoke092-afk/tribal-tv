@@ -49,6 +49,7 @@ data class SettingsDraft(
     val newPlaylistName: String?,
     val newPlaylistUrl: String?,
     val removedPlaylistIds: List<Long>,
+    val renamedPlaylists: Map<Long, String>,
     val showLogos: Boolean,
     val hideGeoBlocked: Boolean,
     val hideNot24x7: Boolean,
@@ -88,6 +89,11 @@ fun SettingsDialog(
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
     var removedPlaylistIds by remember { mutableStateOf(emptyList<Long>()) }
+    // Rename mode: the row being edited and its text buffer. Confirmed
+    // renames collect in the map and ride to Save with everything else.
+    var renamingPlaylistId by remember { mutableStateOf<Long?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var renamedPlaylists by remember { mutableStateOf(mapOf<Long, String>()) }
     var showLogos by remember { mutableStateOf(initialShowLogos) }
     var hideGeoBlocked by remember { mutableStateOf(initialHideGeoBlocked) }
     var hideNot24x7 by remember { mutableStateOf(initialHideNot24x7) }
@@ -138,32 +144,88 @@ fun SettingsDialog(
                                 errorText = null
                             }
                         )
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = playlist.name,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                        if (renamingPlaylistId == playlist.id) {
+                            OutlinedTextField(
+                                value = renameText,
+                                onValueChange = { renameText = it },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                label = {
+                                    Text(
+                                        text = "Name",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                    cursorColor = MaterialTheme.colorScheme.primary
+                                )
                             )
-                            Text(
-                                text = playlist.url,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        // The playlist that will be active can't be
-                        // removed, and the registry must never end up
-                        // empty — both enforced right here.
-                        IconButton(
-                            onClick = { removedPlaylistIds = removedPlaylistIds + playlist.id },
-                            enabled = playlist.id != selectedPlaylistId && visiblePlaylists.size > 1
-                        ) {
-                            Icon(
-                                imageVector = TribalIcons.Close,
-                                contentDescription = "Remove playlist",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            TextButton(
+                                onClick = {
+                                    val trimmed = renameText.trim()
+                                    if (trimmed.isEmpty()) {
+                                        errorText = "Give the playlist a name."
+                                    } else {
+                                        renamedPlaylists = renamedPlaylists + (playlist.id to trimmed)
+                                        renamingPlaylistId = null
+                                        errorText = null
+                                    }
+                                }
+                            ) {
+                                Text("OK", color = MaterialTheme.colorScheme.primary)
+                            }
+                            TextButton(
+                                onClick = {
+                                    renamingPlaylistId = null
+                                    errorText = null
+                                }
+                            ) {
+                                Text(
+                                    "Cancel",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = renamedPlaylists[playlist.id] ?: playlist.name,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = playlist.url,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            TextButton(onClick = {
+                                renamingPlaylistId = playlist.id
+                                renameText = renamedPlaylists[playlist.id] ?: playlist.name
+                            }) {
+                                Text(
+                                    text = "Rename",
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            // The playlist that will be active can't be
+                            // removed, and the registry must never end up
+                            // empty — both enforced right here.
+                            IconButton(
+                                onClick = { removedPlaylistIds = removedPlaylistIds + playlist.id },
+                                enabled = playlist.id != selectedPlaylistId && visiblePlaylists.size > 1
+                            ) {
+                                Icon(
+                                    imageVector = TribalIcons.Close,
+                                    contentDescription = "Remove playlist",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -295,6 +357,15 @@ fun SettingsDialog(
                     } else if (addingNew && !isValidPlaylistUrl(url)) {
                         errorText = "Enter a valid http(s) playlist URL."
                     } else {
+                        // Fold an unconfirmed rename into the save, so
+                        // typing a name and hitting Save works without
+                        // pressing OK first.
+                        val renaming = renamingPlaylistId
+                        val draftRenames = if (renaming != null && renameText.isNotBlank()) {
+                            renamedPlaylists + (renaming to renameText.trim())
+                        } else {
+                            renamedPlaylists
+                        }
                         scope.launch {
                             isSaving = true
                             val error = onSave(
@@ -303,6 +374,7 @@ fun SettingsDialog(
                                     newPlaylistName = if (addingNew) name else null,
                                     newPlaylistUrl = if (addingNew) url else null,
                                     removedPlaylistIds = removedPlaylistIds,
+                                    renamedPlaylists = draftRenames,
                                     showLogos = showLogos,
                                     hideGeoBlocked = hideGeoBlocked,
                                     hideNot24x7 = hideNot24x7,

@@ -194,6 +194,11 @@ fun IptvApp(
                             // cache or any store is touched, so a failure
                             // leaves everything exactly as it was.
                             val loaded = repository.refreshChannels(targetUrl)
+                            // Renames apply before removals so a renamed-
+                            // and-removed playlist leaves no orphan keys.
+                            draft.renamedPlaylists.forEach { (id, name) ->
+                                playlistStore.rename(id, name)
+                            }
                             draft.removedPlaylistIds.forEach { playlistStore.remove(it) }
                             if (newName != null && newUrl != null) {
                                 val added = playlistStore.add(newName, newUrl)
@@ -204,6 +209,9 @@ fun IptvApp(
                             channels = loaded
                             playlistUrl = targetUrl
                         } else {
+                            draft.renamedPlaylists.forEach { (id, name) ->
+                                playlistStore.rename(id, name)
+                            }
                             draft.removedPlaylistIds.forEach { playlistStore.remove(it) }
                         }
                         if (draft.showLogos != showLogos) {

@@ -75,6 +75,11 @@ class PlaylistStore(context: Context) {
             .apply()
     }
 
+    /** Renaming never touches the URL or the active flag — no fetch needed. */
+    fun rename(id: Long, name: String) {
+        prefs.edit().putString(nameKey(id), name).apply()
+    }
+
     fun activePlaylist(): SavedPlaylist {
         val activeId = prefs.getLong(KEY_ACTIVE, NEW_PLAYLIST_ID)
         val all = playlists()
