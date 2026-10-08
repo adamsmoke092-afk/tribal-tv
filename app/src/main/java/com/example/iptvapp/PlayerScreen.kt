@@ -45,7 +45,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 
@@ -72,7 +71,7 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun PlayerScreen(
-    player: ExoPlayer,
+    player: Player,
     channelName: String,
     isInPip: Boolean,
     onPlaybackFailed: () -> Unit,
@@ -80,7 +79,15 @@ fun PlayerScreen(
     onBack: () -> Unit
 ) {
     var isBuffering by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf<String?>(null) }
+    // Seeded from the player so an error that struck while the UI was gone
+    // (background play) still shows its card on return.
+    var statusMessage by remember {
+        mutableStateOf(
+            player.playerError?.let {
+                "This channel isn't playable right now (${it.errorCodeName})."
+            }
+        )
+    }
     val display = remember(channelName) { parseDisplay(channelName) }
 
     // Landscape = video fills the screen; the PlayerView controller and

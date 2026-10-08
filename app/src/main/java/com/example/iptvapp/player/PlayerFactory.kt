@@ -73,8 +73,11 @@ object PlayerFactory {
      * Loads a channel and wires up recoverable-error handling: on a network
      * error, re-prepare instead of surfacing a hard failure (SPEC §2.3).
      */
-    fun loadChannel(player: ExoPlayer, streamUrl: String) {
+    fun loadChannel(player: Player, streamUrl: String) {
+        // mediaId doubles as the stream URL so the UI can resync to
+        // whatever the session is already playing after a reconnect.
         val mediaItem = MediaItem.Builder()
+            .setMediaId(streamUrl)
             .setUri(streamUrl)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()

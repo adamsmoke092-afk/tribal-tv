@@ -55,6 +55,9 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-datasource:$media3")
+    // Media session + background play (PlaybackService). Same 1.4.1 line
+    // as the rest of media3.
+    implementation("androidx.media3:media3-session:$media3")
 
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")

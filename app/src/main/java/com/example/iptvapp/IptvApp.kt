@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
 import com.example.iptvapp.player.PlayerFactory
 import com.example.iptvapp.playlist.M3uChannel
 import com.example.iptvapp.playlist.PlaylistRepository
@@ -23,6 +23,9 @@ import kotlinx.coroutines.launch
  * dialog's save path, which fetches and parses the new playlist before
  * anything is persisted or cached. Batch B: also forwards MainActivity's
  * picture-in-picture state so the player can strip its chrome.
+ * Background play: the player param is a MediaController proxying the
+ * session player in PlaybackService; on first load the UI resyncs to
+ * whatever the session is already playing.
  */
 @Composable
 fun IptvApp(
@@ -32,7 +35,7 @@ fun IptvApp(
     recentsStore: RecentsStore,
     deadStore: DeadChannelStore,
     repository: PlaylistRepository,
-    player: ExoPlayer,
+    player: Player,
     isInPip: Boolean
 ) {
     var channels by remember { mutableStateOf<List<M3uChannel>>(emptyList()) }
@@ -62,17 +65,24 @@ fun IptvApp(
         }
     }
 
-    // Reopen the last-watched channel once per session, only if the
-    // "Resume on launch" setting is on and the channel is still in the
-    // current playlist. Fires when the channel list arrives (cache or
-    // network); the guard keeps a refresh from re-opening the player.
+    // Once per session, when the channel list arrives: if the playback
+    // session is already playing something (app reopened from the
+    // background), land back on that channel's player screen instead of
+    // reloading it. Otherwise, with "Resume on launch" on, reopen the
+    // last-watched channel if it's still in the playlist. The
+    // resumedLast guard keeps a refresh from re-triggering either path.
     LaunchedEffect(channels) {
-        if (resumedLast || !resumeOnLaunch || channels.isEmpty()) return@LaunchedEffect
+        if (resumedLast || channels.isEmpty()) return@LaunchedEffect
         resumedLast = true
-        val lastUrl = recents.firstOrNull() ?: return@LaunchedEffect
-        val last = channels.firstOrNull { it.streamUrl == lastUrl } ?: return@LaunchedEffect
-        PlayerFactory.loadChannel(player, last.streamUrl)
-        selectedChannel = last
+        val playingUrl = player.currentMediaItem?.mediaId
+        if (playingUrl != null) {
+            selectedChannel = channels.firstOrNull { it.streamUrl == playingUrl }
+        } else if (resumeOnLaunch) {
+            val lastUrl = recents.firstOrNull() ?: return@LaunchedEffect
+            val last = channels.firstOrNull { it.streamUrl == lastUrl } ?: return@LaunchedEffect
+            PlayerFactory.loadChannel(player, last.streamUrl)
+            selectedChannel = last
+        }
     }
 
     val current = selectedChannel

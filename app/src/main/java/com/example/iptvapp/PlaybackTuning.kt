@@ -1,11 +1,12 @@
 package com.example.iptvapp
 
 import androidx.media3.common.C
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
 
 /**
  * Applies the playback-related settings to the player's track selection.
- * Called once at startup (MainActivity) and after every settings save.
+ * Called once at service startup (PlaybackService) and after every
+ * settings save.
  *
  * Data saver caps the video bitrate so an adaptive stream stays on a low
  * rung. A fixed-bitrate stream above the cap still plays — the selector's
@@ -20,7 +21,7 @@ import androidx.media3.exoplayer.ExoPlayer
  */
 const val DATA_SAVER_VIDEO_BITRATE = 500_000
 
-fun applyPlaybackPreferences(player: ExoPlayer, dataSaver: Boolean, audioOnly: Boolean) {
+fun applyPlaybackPreferences(player: Player, dataSaver: Boolean, audioOnly: Boolean) {
     player.trackSelectionParameters = player.trackSelectionParameters
         .buildUpon()
         .setMaxVideoBitrate(if (dataSaver) DATA_SAVER_VIDEO_BITRATE else Int.MAX_VALUE)

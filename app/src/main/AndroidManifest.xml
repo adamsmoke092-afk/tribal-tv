@@ -4,6 +4,17 @@
     <!-- Needed for playlist fetch (PlaylistRepository) and stream playback (ExoPlayer). -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Background play (PlaybackService, a media3 MediaSessionService):
+         FOREGROUND_SERVICE + its mediaPlayback type let the service run while
+         posting the media notification; WAKE_LOCK backs the player's network
+         wake mode (screen-off streaming); POST_NOTIFICATIONS is a runtime
+         permission on 13+ — without it Android hides the notification but
+         playback keeps running. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -33,6 +44,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The media3 session service. SessionToken refuses to bind without
+             the MediaSessionService intent-filter action; the
+             foregroundServiceType is what lets playback continue in the
+             background with the media notification. -->
+        <service
+            android:name=".PlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>
