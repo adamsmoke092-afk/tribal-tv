@@ -21,9 +21,12 @@
           used, per SPEC §3's legal/positioning note.
         -->
 
+        <!-- supportsPictureInPicture: enterPictureInPictureMode() throws
+             IllegalStateException unless the activity declares this. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
+            android:supportsPictureInPicture="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -1,6 +1,9 @@
 package com.example.iptvapp
 
+import android.app.Activity
+import android.app.PictureInPictureParams
 import android.content.res.Configuration
+import android.util.Rational
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -22,6 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,7 +63,9 @@ import kotlinx.coroutines.delay
  * UI: dark cinema (redesign step 3) + feature batch: the manifest's
  * configChanges keeps the activity alive across rotation, so playback and
  * the selected channel survive; the header bar hides in landscape so the
- * video fills the screen; the error card gained a Retry button.
+ * video fills the screen; the error card gained a Retry button. Picture-
+ * in-picture: a header (or landscape overlay) button enters a floating
+ * window; all chrome hides while in it.
  * Playback listeners, BackHandler and the buffering timer keep their
  * behavior; the listeners now also report success/failure so channels
  * that fail get remembered and dimmed in the list.
@@ -67,6 +74,7 @@ import kotlinx.coroutines.delay
 fun PlayerScreen(
     player: ExoPlayer,
     channelName: String,
+    isInPip: Boolean,
     onPlaybackFailed: () -> Unit,
     onPlaybackSucceeded: () -> Unit,
     onBack: () -> Unit
@@ -78,6 +86,21 @@ fun PlayerScreen(
     // Landscape = video fills the screen; the PlayerView controller and
     // the system back gesture still work without the header bar.
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // The PiP window takes the video's aspect ratio when the stream has a
+    // sane one (the system accepts 2.39:1–1:2.39); anything freak or
+    // unknown falls back to 16:9.
+    val activity = LocalContext.current as? Activity
+    val enterPip: () -> Unit = {
+        val videoSize = player.videoSize
+        val aspect = if (
+            videoSize.width > 0 && videoSize.height > 0 &&
+            videoSize.width.toFloat() / videoSize.height in 0.5f..2.0f
+        ) Rational(videoSize.width, videoSize.height) else Rational(16, 9)
+        activity?.enterPictureInPictureMode(
+            PictureInPictureParams.Builder().setAspectRatio(aspect).build()
+        )
+    }
 
     // Without this, the system/gesture back button exits the whole app
     // instead of returning to the channel list — there's no navigation
@@ -127,7 +150,7 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        if (!isLandscape) {
+        if (!isLandscape && !isInPip) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -156,6 +179,10 @@ fun PlayerScreen(
                         display.quality?.let { Chip(it, accent = false) }
                     }
                 }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = enterPip) {
+                    Text("PiP", color = MaterialTheme.colorScheme.onBackground)
+                }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
         }
@@ -171,7 +198,20 @@ fun PlayerScreen(
                 }
             )
 
-            statusMessage?.let { message ->
+            // Landscape hides the header, so the PiP trigger lives as a
+            // small overlay on the video itself.
+            if (isLandscape && !isInPip) {
+                TextButton(
+                    onClick = enterPip,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Text("PiP", color = MaterialTheme.colorScheme.onBackground)
+                }
+            }
+
+            // Any error while in PiP just shows a quiet black window; the
+            // card is only useful once the user is back in the app.
+            if (!isInPip) statusMessage?.let { message ->
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)

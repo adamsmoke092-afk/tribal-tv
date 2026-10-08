@@ -21,7 +21,8 @@ import kotlinx.coroutines.launch
  * Feature batch: owns the playlist URL as state, seeded from
  * SettingsStore by MainActivity. It only changes through the settings
  * dialog's save path, which fetches and parses the new playlist before
- * anything is persisted or cached.
+ * anything is persisted or cached. Batch B: also forwards MainActivity's
+ * picture-in-picture state so the player can strip its chrome.
  */
 @Composable
 fun IptvApp(
@@ -31,7 +32,8 @@ fun IptvApp(
     recentsStore: RecentsStore,
     deadStore: DeadChannelStore,
     repository: PlaylistRepository,
-    player: ExoPlayer
+    player: ExoPlayer,
+    isInPip: Boolean
 ) {
     var channels by remember { mutableStateOf<List<M3uChannel>>(emptyList()) }
     var selectedChannel by remember { mutableStateOf<M3uChannel?>(null) }
@@ -165,6 +167,7 @@ fun IptvApp(
         PlayerScreen(
             player = player,
             channelName = current.name,
+            isInPip = isInPip,
             onPlaybackFailed = {
                 // Audio-only mode fails on a stream with no audio track;
                 // that failure says nothing about the channel being dead.

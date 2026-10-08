@@ -1,8 +1,10 @@
 package com.example.iptvapp
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.mutableStateOf
 import androidx.media3.exoplayer.ExoPlayer
 import coil3.SingletonImageLoader
 import com.example.iptvapp.player.PlayerFactory
@@ -23,6 +25,15 @@ class MainActivity : ComponentActivity() {
     private lateinit var favouritesStore: FavouritesStore
     private lateinit var recentsStore: RecentsStore
     private lateinit var deadStore: DeadChannelStore
+
+    // Set from onPictureInPictureModeChanged; read in setContent so the
+    // Compose tree recomposes when PiP mode changes.
+    private val isInPip = mutableStateOf(false)
+
+    // Set only when onStop pauses playback on the way to the background;
+    // onStart resumes exactly what this flag paused — never a pause the
+    // user or the system chose.
+    private var pausedForBackgroundExit = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,10 +65,39 @@ class MainActivity : ComponentActivity() {
                     recentsStore = recentsStore,
                     deadStore = deadStore,
                     repository = repository,
-                    player = player
+                    player = player,
+                    isInPip = isInPip.value
                 )
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (pausedForBackgroundExit) {
+            pausedForBackgroundExit = false
+            player.play()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Backgrounding without PiP pauses playback — there is no media
+        // notification, so playback left running would be uncontrollable
+        // invisible audio. Dismissing the PiP window also lands here, by
+        // which point isInPictureInPictureMode is already false.
+        if (!isInPictureInPictureMode && player.playWhenReady) {
+            pausedForBackgroundExit = true
+            player.pause()
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPip.value = isInPictureInPictureMode
     }
 
     override fun onDestroy() {
