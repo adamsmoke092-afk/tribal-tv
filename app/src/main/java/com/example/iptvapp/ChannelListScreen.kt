@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +30,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,12 +61,15 @@ import com.example.iptvapp.playlist.M3uChannel
  * Feature batch: a search icon swaps the title for an inline search field;
  * filtering is live, group counts follow the filtered results, and empty
  * groups drop out. Query and search-mode survive rotation
- * (rememberSaveable + configChanges).
+ * (rememberSaveable + configChanges). Batch B: the list is wrapped in
+ * material3's PullToRefreshBox — drag down on the list to refresh.
  */
+@OptIn(ExperimentalMaterial3Api::class) // PullToRefreshBox is experimental in material3 1.3.0
 @Composable
 fun ChannelListScreen(
     channels: List<M3uChannel>,
     error: String?,
+    isRefreshing: Boolean,
     showLogos: Boolean,
     hideGeoBlocked: Boolean,
     hideNot24x7: Boolean,
@@ -195,30 +200,36 @@ fun ChannelListScreen(
                         recents
                     )
                 }
-                LazyColumn {
-                    grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
-                        // Index-based keys: the synthetic Favourites group could
-                        // share a name with a real category, and name-based keys
-                        // would then collide and crash the list.
-                        item(key = "hdr:$groupIndex") {
-                            GroupHeader(name = group, count = groupChannels.size)
-                        }
-                        items(
-                            items = groupChannels,
-                            key = { channel -> "ch:$groupIndex|${channel.streamUrl}" }
-                        ) { channel ->
-                            ChannelRow(
-                                channel = channel,
-                                showLogos = showLogos,
-                                isFavourite = channel.streamUrl in favourites,
-                                isDead = channel.streamUrl in deadChannels,
-                                onToggleFavourite = { onToggleFavourite(channel) },
-                                onClick = { onChannelSelected(channel) }
-                            )
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outline,
-                                thickness = 0.5.dp
-                            )
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    LazyColumn {
+                        grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
+                            // Index-based keys: the synthetic Favourites group could
+                            // share a name with a real category, and name-based keys
+                            // would then collide and crash the list.
+                            item(key = "hdr:$groupIndex") {
+                                GroupHeader(name = group, count = groupChannels.size)
+                            }
+                            items(
+                                items = groupChannels,
+                                key = { channel -> "ch:$groupIndex|${channel.streamUrl}" }
+                            ) { channel ->
+                                ChannelRow(
+                                    channel = channel,
+                                    showLogos = showLogos,
+                                    isFavourite = channel.streamUrl in favourites,
+                                    isDead = channel.streamUrl in deadChannels,
+                                    onToggleFavourite = { onToggleFavourite(channel) },
+                                    onClick = { onChannelSelected(channel) }
+                                )
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outline,
+                                    thickness = 0.5.dp
+                                )
+                            }
                         }
                     }
                 }

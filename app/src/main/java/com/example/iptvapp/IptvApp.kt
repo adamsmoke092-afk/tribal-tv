@@ -51,6 +51,7 @@ fun IptvApp(
     var audioOnly by remember { mutableStateOf(settings.audioOnly()) }
     var resumedLast by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -79,6 +80,7 @@ fun IptvApp(
         ChannelListScreen(
             channels = channels,
             error = loadError,
+            isRefreshing = isRefreshing,
             showLogos = showLogos,
             hideGeoBlocked = hideGeoBlocked,
             hideNot24x7 = hideNot24x7,
@@ -96,12 +98,19 @@ fun IptvApp(
                 recents = recentsStore.recents()
             },
             onRefresh = {
-                scope.launch {
-                    try {
-                        channels = repository.refreshChannels(playlistUrl)
-                        loadError = null
-                    } catch (e: Exception) {
-                        loadError = "Refresh failed: ${e.message}"
+                // Shared by the top-bar icon and pull-to-refresh; the guard
+                // keeps a pull mid-refresh from stacking a second fetch.
+                if (!isRefreshing) {
+                    scope.launch {
+                        isRefreshing = true
+                        try {
+                            channels = repository.refreshChannels(playlistUrl)
+                            loadError = null
+                        } catch (e: Exception) {
+                            loadError = "Refresh failed: ${e.message}"
+                        } finally {
+                            isRefreshing = false
+                        }
                     }
                 }
             },
