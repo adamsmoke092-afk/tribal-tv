@@ -55,7 +55,8 @@ data class SettingsDraft(
     val hdOnly: Boolean,
     val resumeOnLaunch: Boolean,
     val dataSaver: Boolean,
-    val audioOnly: Boolean
+    val audioOnly: Boolean,
+    val gridLayout: Boolean
 )
 
 /**
@@ -78,6 +79,7 @@ fun SettingsDialog(
     initialResumeOnLaunch: Boolean,
     initialDataSaver: Boolean,
     initialAudioOnly: Boolean,
+    initialGridLayout: Boolean,
     onDismiss: () -> Unit,
     onSave: suspend (SettingsDraft) -> String?
 ) {
@@ -93,6 +95,7 @@ fun SettingsDialog(
     var resumeOnLaunch by remember { mutableStateOf(initialResumeOnLaunch) }
     var dataSaver by remember { mutableStateOf(initialDataSaver) }
     var audioOnly by remember { mutableStateOf(initialAudioOnly) }
+    var gridLayout by remember { mutableStateOf(initialGridLayout) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -259,6 +262,7 @@ fun SettingsDialog(
                 SettingSwitch("Data saver (cap video quality)", dataSaver) { dataSaver = it }
                 SettingSwitch("Audio only (play sound, no video)", audioOnly) { audioOnly = it }
                 SettingSwitch("Show channel logos", showLogos) { showLogos = it }
+                SettingSwitch("Grid layout (logo tiles)", gridLayout) { gridLayout = it }
                 SettingSwitch("Hide geo-blocked", hideGeoBlocked) { hideGeoBlocked = it }
                 SettingSwitch("Hide Not 24/7", hideNot24x7) { hideNot24x7 = it }
                 SettingSwitch("HD only (720p+)", hdOnly) { hdOnly = it }
@@ -305,7 +309,8 @@ fun SettingsDialog(
                                     hdOnly = hdOnly,
                                     resumeOnLaunch = resumeOnLaunch,
                                     dataSaver = dataSaver,
-                                    audioOnly = audioOnly
+                                    audioOnly = audioOnly,
+                                    gridLayout = gridLayout
                                 )
                             )
                             isSaving = false

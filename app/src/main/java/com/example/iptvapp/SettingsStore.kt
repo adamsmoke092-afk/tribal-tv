@@ -8,8 +8,9 @@ import java.net.URI
  * App settings over SharedPreferences (spec: no DataStore, no new deps).
  * Keys: playlist_url (legacy single-playlist URL — read exactly once to
  * seed PlaylistStore on first run, then unused), show_logos, the three
- * list-visibility filters, resume_on_launch, data_saver and audio_only —
- * all default off, so behaviour is unchanged until the user opts in.
+ * list-visibility filters, resume_on_launch, data_saver, audio_only and
+ * grid_layout — all default off, so behaviour is unchanged until the
+ * user opts in.
  */
 class SettingsStore(context: Context) {
 
@@ -61,6 +62,12 @@ class SettingsStore(context: Context) {
         prefs.edit().putBoolean(KEY_AUDIO_ONLY, enabled).apply()
     }
 
+    fun gridLayout(): Boolean = prefs.getBoolean(KEY_GRID_LAYOUT, false)
+
+    fun setGridLayout(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_GRID_LAYOUT, enabled).apply()
+    }
+
     companion object {
         const val DEFAULT_PLAYLIST_URL = "https://iptv-org.github.io/iptv/countries/za.m3u"
 
@@ -72,6 +79,7 @@ class SettingsStore(context: Context) {
         private const val KEY_RESUME_ON_LAUNCH = "resume_on_launch"
         private const val KEY_DATA_SAVER = "data_saver"
         private const val KEY_AUDIO_ONLY = "audio_only"
+        private const val KEY_GRID_LAYOUT = "grid_layout"
     }
 }
 

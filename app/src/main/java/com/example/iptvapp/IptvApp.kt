@@ -58,6 +58,7 @@ fun IptvApp(
     var resumeOnLaunch by remember { mutableStateOf(settings.resumeOnLaunch()) }
     var dataSaver by remember { mutableStateOf(settings.dataSaver()) }
     var audioOnly by remember { mutableStateOf(settings.audioOnly()) }
+    var gridLayout by remember { mutableStateOf(settings.gridLayout()) }
     var resumedLast by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -116,6 +117,7 @@ fun IptvApp(
             isRefreshing = isRefreshing,
             playingUrl = playingUrl,
             showLogos = showLogos,
+            gridLayout = gridLayout,
             hideGeoBlocked = hideGeoBlocked,
             hideNot24x7 = hideNot24x7,
             hdOnly = hdOnly,
@@ -162,6 +164,7 @@ fun IptvApp(
                 initialResumeOnLaunch = resumeOnLaunch,
                 initialDataSaver = dataSaver,
                 initialAudioOnly = audioOnly,
+                initialGridLayout = gridLayout,
                 onDismiss = { showSettings = false },
                 onSave = { draft ->
                     try {
@@ -198,6 +201,10 @@ fun IptvApp(
                         if (draft.showLogos != showLogos) {
                             showLogos = draft.showLogos
                             settings.setShowLogos(draft.showLogos)
+                        }
+                        if (draft.gridLayout != gridLayout) {
+                            gridLayout = draft.gridLayout
+                            settings.setGridLayout(draft.gridLayout)
                         }
                         if (draft.hideGeoBlocked != hideGeoBlocked) {
                             hideGeoBlocked = draft.hideGeoBlocked

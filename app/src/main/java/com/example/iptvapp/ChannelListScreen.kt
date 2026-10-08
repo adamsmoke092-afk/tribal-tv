@@ -1,6 +1,7 @@
 package com.example.iptvapp
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,7 +18,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -46,6 +52,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -63,7 +71,8 @@ import com.example.iptvapp.playlist.M3uChannel
  * groups drop out. Query and search-mode survive rotation
  * (rememberSaveable + configChanges). Batch B: the list is wrapped in
  * material3's PullToRefreshBox — drag down on the list to refresh.
- * Batch D: the row the session is currently playing gets a chip.
+ * Batch D: the row the session is currently playing gets a chip, and the
+ * "Grid layout" setting swaps the rows for logo tiles.
  */
 @OptIn(ExperimentalMaterial3Api::class) // PullToRefreshBox is experimental in material3 1.3.0
 @Composable
@@ -73,6 +82,7 @@ fun ChannelListScreen(
     isRefreshing: Boolean,
     playingUrl: String?,
     showLogos: Boolean,
+    gridLayout: Boolean,
     hideGeoBlocked: Boolean,
     hideNot24x7: Boolean,
     hdOnly: Boolean,
@@ -207,31 +217,62 @@ fun ChannelListScreen(
                     onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    LazyColumn {
-                        grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
-                            // Index-based keys: the synthetic Favourites group could
-                            // share a name with a real category, and name-based keys
-                            // would then collide and crash the list.
-                            item(key = "hdr:$groupIndex") {
-                                GroupHeader(name = group, count = groupChannels.size)
+                    if (gridLayout) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 110.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
+                                // Index-based keys: same collision rationale as
+                                // the list below (a synthetic group name can
+                                // collide with a real category).
+                                item(
+                                    key = "hdr:$groupIndex",
+                                    span = { GridItemSpan(maxLineSpan) }
+                                ) {
+                                    GroupHeader(name = group, count = groupChannels.size)
+                                }
+                                gridItems(
+                                    items = groupChannels,
+                                    key = { channel -> "ch:$groupIndex|${channel.streamUrl}" }
+                                ) { channel ->
+                                    ChannelGridCell(
+                                        channel = channel,
+                                        showLogos = showLogos,
+                                        isPlaying = channel.streamUrl == playingUrl,
+                                        isDead = channel.streamUrl in deadChannels,
+                                        onClick = { onChannelSelected(channel) }
+                                    )
+                                }
                             }
-                            items(
-                                items = groupChannels,
-                                key = { channel -> "ch:$groupIndex|${channel.streamUrl}" }
-                            ) { channel ->
-                                ChannelRow(
-                                    channel = channel,
-                                    showLogos = showLogos,
-                                    isFavourite = channel.streamUrl in favourites,
-                                    isDead = channel.streamUrl in deadChannels,
-                                    isPlaying = channel.streamUrl == playingUrl,
-                                    onToggleFavourite = { onToggleFavourite(channel) },
-                                    onClick = { onChannelSelected(channel) }
-                                )
-                                HorizontalDivider(
-                                    color = MaterialTheme.colorScheme.outline,
-                                    thickness = 0.5.dp
-                                )
+                        }
+                    } else {
+                        LazyColumn {
+                            grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
+                                // Index-based keys: the synthetic Favourites group could
+                                // share a name with a real category, and name-based keys
+                                // would then collide and crash the list.
+                                item(key = "hdr:$groupIndex") {
+                                    GroupHeader(name = group, count = groupChannels.size)
+                                }
+                                items(
+                                    items = groupChannels,
+                                    key = { channel -> "ch:$groupIndex|${channel.streamUrl}" }
+                                ) { channel ->
+                                    ChannelRow(
+                                        channel = channel,
+                                        showLogos = showLogos,
+                                        isFavourite = channel.streamUrl in favourites,
+                                        isDead = channel.streamUrl in deadChannels,
+                                        isPlaying = channel.streamUrl == playingUrl,
+                                        onToggleFavourite = { onToggleFavourite(channel) },
+                                        onClick = { onChannelSelected(channel) }
+                                    )
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outline,
+                                        thickness = 0.5.dp
+                                    )
+                                }
                             }
                         }
                     }
@@ -326,11 +367,65 @@ private fun ChannelRow(
     }
 }
 
+/**
+ * Grid mode cell: big centered avatar, a small accent dot on the avatar
+ * corner when this is the playing channel, and a 2-line name underneath.
+ * Deliberately no favourite star or chips in grid mode — tap plays, and
+ * list mode remains the place for details.
+ */
 @Composable
-private fun LetterAvatar(name: String) {
+private fun ChannelGridCell(
+    channel: M3uChannel,
+    showLogos: Boolean,
+    isPlaying: Boolean,
+    isDead: Boolean,
+    onClick: () -> Unit
+) {
+    val display = remember(channel.name) { parseDisplay(channel.name) }
+    val deadAlpha = if (isDead) 0.55f else 1f
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(Modifier.alpha(deadAlpha)) {
+            ChannelAvatar(
+                logoUrl = channel.logoUrl,
+                showLogos = showLogos,
+                fallbackName = display.cleanName,
+                size = 64.dp
+            )
+            if (isPlaying) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = display.cleanName,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.alpha(deadAlpha)
+        )
+    }
+}
+
+@Composable
+private fun LetterAvatar(name: String, size: Dp = 40.dp) {
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(size)
             .clip(RoundedCornerShape(10.dp))
             .background(TribalAccentTint),
         contentAlignment = Alignment.Center
@@ -345,24 +440,31 @@ private fun LetterAvatar(name: String) {
 }
 
 /**
- * 40dp slot: the letter avatar is always the base layer, so it shows while
- * a logo loads, and remains if the load fails. The logo is drawn on top
- * only when logos are enabled and the channel has one. Sizing the request
- * to 80dp keeps the bitmap crisp on 2x screens and tiny on the wire.
+ * Square avatar slot (40dp in the list, 64dp in the grid): the letter
+ * avatar is always the base layer, so it shows while a logo loads, and
+ * remains if the load fails. The logo is drawn on top only when logos
+ * are enabled and the channel has one. The request is sized at 2x the
+ * slot — crisp on 2x screens, tiny on the wire.
  */
 @Composable
-private fun ChannelAvatar(logoUrl: String?, showLogos: Boolean, fallbackName: String) {
+private fun ChannelAvatar(
+    logoUrl: String?,
+    showLogos: Boolean,
+    fallbackName: String,
+    size: Dp = 40.dp
+) {
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(size)
             .clip(RoundedCornerShape(10.dp))
     ) {
-        LetterAvatar(fallbackName)
+        LetterAvatar(fallbackName, size)
         if (showLogos && !logoUrl.isNullOrBlank()) {
+            val requestPx = (size.value * 2).toInt()
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(logoUrl)
-                    .size(80, 80)
+                    .size(requestPx, requestPx)
                     .build(),
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
