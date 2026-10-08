@@ -63,6 +63,7 @@ import com.example.iptvapp.playlist.M3uChannel
  * groups drop out. Query and search-mode survive rotation
  * (rememberSaveable + configChanges). Batch B: the list is wrapped in
  * material3's PullToRefreshBox — drag down on the list to refresh.
+ * Batch D: the row the session is currently playing gets a chip.
  */
 @OptIn(ExperimentalMaterial3Api::class) // PullToRefreshBox is experimental in material3 1.3.0
 @Composable
@@ -70,6 +71,7 @@ fun ChannelListScreen(
     channels: List<M3uChannel>,
     error: String?,
     isRefreshing: Boolean,
+    playingUrl: String?,
     showLogos: Boolean,
     hideGeoBlocked: Boolean,
     hideNot24x7: Boolean,
@@ -222,6 +224,7 @@ fun ChannelListScreen(
                                     showLogos = showLogos,
                                     isFavourite = channel.streamUrl in favourites,
                                     isDead = channel.streamUrl in deadChannels,
+                                    isPlaying = channel.streamUrl == playingUrl,
                                     onToggleFavourite = { onToggleFavourite(channel) },
                                     onClick = { onChannelSelected(channel) }
                                 )
@@ -268,6 +271,7 @@ private fun ChannelRow(
     showLogos: Boolean,
     isFavourite: Boolean,
     isDead: Boolean,
+    isPlaying: Boolean,
     onToggleFavourite: () -> Unit,
     onClick: () -> Unit
 ) {
@@ -297,13 +301,14 @@ private fun ChannelRow(
                 fontSize = 15.sp,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            if (display.quality != null || display.tags.isNotEmpty() || isDead) {
+            if (isPlaying || display.quality != null || display.tags.isNotEmpty() || isDead) {
                 Spacer(Modifier.height(6.dp))
                 // FlowRow so several tags wrap on narrow phones instead of clipping.
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    if (isPlaying) Chip(text = "Playing", accent = true)
                     display.quality?.let { Chip(text = it, accent = false) }
                     display.tags.forEach { Chip(text = it, accent = true) }
                     if (isDead) Chip(text = "May be dead", accent = false)

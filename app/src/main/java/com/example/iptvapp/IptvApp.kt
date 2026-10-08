@@ -1,12 +1,14 @@
 package com.example.iptvapp
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.example.iptvapp.player.PlayerFactory
 import com.example.iptvapp.playlist.M3uChannel
@@ -59,6 +61,10 @@ fun IptvApp(
     var resumedLast by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
+    // mediaId == streamUrl of whatever the session is playing; the list
+    // flags that row. Seeded from the current item so reconnecting to an
+    // already-playing session starts correct.
+    var playingUrl by remember { mutableStateOf(player.currentMediaItem?.mediaId) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -89,12 +95,26 @@ fun IptvApp(
         }
     }
 
+    // Keeps playingUrl live as the session loads, switches or stops —
+    // mostly for background play, where the list and the notification are
+    // the only windows onto playback.
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                playingUrl = mediaItem?.mediaId
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+
     val current = selectedChannel
     if (current == null) {
         ChannelListScreen(
             channels = channels,
             error = loadError,
             isRefreshing = isRefreshing,
+            playingUrl = playingUrl,
             showLogos = showLogos,
             hideGeoBlocked = hideGeoBlocked,
             hideNot24x7 = hideNot24x7,
