@@ -18,11 +18,12 @@ import kotlinx.coroutines.launch
  * tapped, then hands the stream URL to PlayerFactory.loadChannel and
  * switches to the player screen (SPEC §2.4/§5 — "wire it together").
  *
- * Feature batch: owns the playlist URL as state, seeded from
- * SettingsStore by MainActivity. It only changes through the settings
- * dialog's save path, which fetches and parses the new playlist before
- * anything is persisted or cached. Batch B: also forwards MainActivity's
- * picture-in-picture state so the player can strip its chrome.
+ * Multiple playlists: the registry lives in PlaylistStore; this screen
+ * owns the active playlist's URL as state. It only changes through the
+ * settings dialog's save path, which fetches and parses the target
+ * playlist before anything is persisted or cached. Batch B: also
+ * forwards MainActivity's picture-in-picture state so the player can
+ * strip its chrome.
  * Background play: the player param is a MediaController proxying the
  * session player in PlaybackService; on first load the UI resyncs to
  * whatever the session is already playing.
@@ -31,6 +32,7 @@ import kotlinx.coroutines.launch
 fun IptvApp(
     initialPlaylistUrl: String,
     settings: SettingsStore,
+    playlistStore: PlaylistStore,
     favouritesStore: FavouritesStore,
     recentsStore: RecentsStore,
     deadStore: DeadChannelStore,
@@ -42,6 +44,8 @@ fun IptvApp(
     var selectedChannel by remember { mutableStateOf<M3uChannel?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var playlistUrl by remember { mutableStateOf(initialPlaylistUrl) }
+    var playlists by remember { mutableStateOf(playlistStore.playlists()) }
+    var activePlaylistId by remember { mutableStateOf(playlistStore.activePlaylist().id) }
     var showLogos by remember { mutableStateOf(settings.showLogos()) }
     var hideGeoBlocked by remember { mutableStateOf(settings.hideGeoBlocked()) }
     var hideNot24x7 by remember { mutableStateOf(settings.hideNot24x7()) }
@@ -129,7 +133,8 @@ fun IptvApp(
 
         if (showSettings) {
             SettingsDialog(
-                currentUrl = playlistUrl,
+                playlists = playlists,
+                initialActivePlaylistId = activePlaylistId,
                 initialShowLogos = showLogos,
                 initialHideGeoBlocked = hideGeoBlocked,
                 initialHideNot24x7 = hideNot24x7,
@@ -140,13 +145,35 @@ fun IptvApp(
                 onDismiss = { showSettings = false },
                 onSave = { draft ->
                     try {
-                        if (draft.playlistUrl != playlistUrl) {
-                            // Throws before the Room cache is replaced if the
-                            // fetch fails or the playlist parses to nothing.
-                            val loaded = repository.refreshChannels(draft.playlistUrl)
+                        val activeId = playlistStore.activePlaylist().id
+                        val newName = draft.newPlaylistName
+                        val newUrl = draft.newPlaylistUrl
+                        val targetUrl: String = when {
+                            // Adding implies activating: the new playlist is
+                            // fetched, registered and made active in one go.
+                            newName != null && newUrl != null -> newUrl
+                            draft.selectedPlaylistId != activeId -> playlistStore.playlists()
+                                .firstOrNull { it.id == draft.selectedPlaylistId }
+                                ?.url
+                                ?: throw IllegalStateException("Playlist not found")
+                            else -> ""
+                        }
+                        if (targetUrl.isNotEmpty()) {
+                            // Fetch/parse FIRST — it throws before the Room
+                            // cache or any store is touched, so a failure
+                            // leaves everything exactly as it was.
+                            val loaded = repository.refreshChannels(targetUrl)
+                            draft.removedPlaylistIds.forEach { playlistStore.remove(it) }
+                            if (newName != null && newUrl != null) {
+                                val added = playlistStore.add(newName, newUrl)
+                                playlistStore.setActive(added.id)
+                            } else {
+                                playlistStore.setActive(draft.selectedPlaylistId)
+                            }
                             channels = loaded
-                            playlistUrl = draft.playlistUrl
-                            settings.setPlaylistUrl(draft.playlistUrl)
+                            playlistUrl = targetUrl
+                        } else {
+                            draft.removedPlaylistIds.forEach { playlistStore.remove(it) }
                         }
                         if (draft.showLogos != showLogos) {
                             showLogos = draft.showLogos
@@ -175,6 +202,8 @@ fun IptvApp(
                             settings.setAudioOnly(audioOnly)
                             applyPlaybackPreferences(player, dataSaver, audioOnly)
                         }
+                        playlists = playlistStore.playlists()
+                        activePlaylistId = playlistStore.activePlaylist().id
                         null
                     } catch (e: Exception) {
                         e.message ?: "Failed to load that playlist"

@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var repository: PlaylistRepository
     private lateinit var settings: SettingsStore
+    private lateinit var playlistStore: PlaylistStore
     private lateinit var favouritesStore: FavouritesStore
     private lateinit var recentsStore: RecentsStore
     private lateinit var deadStore: DeadChannelStore
@@ -83,6 +84,8 @@ class MainActivity : ComponentActivity() {
 
         repository = PlaylistRepository(AppDatabase.getInstance(this).channelDao())
         settings = SettingsStore(this)
+        playlistStore = PlaylistStore(this)
+        playlistStore.ensureSeeded(settings.playlistUrl())
         favouritesStore = FavouritesStore(this)
         recentsStore = RecentsStore(this)
         deadStore = DeadChannelStore(this)
@@ -98,8 +101,9 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     IptvApp(
-                        initialPlaylistUrl = settings.playlistUrl(),
+                        initialPlaylistUrl = playlistStore.activePlaylist().url,
                         settings = settings,
+                        playlistStore = playlistStore,
                         favouritesStore = favouritesStore,
                         recentsStore = recentsStore,
                         deadStore = deadStore,

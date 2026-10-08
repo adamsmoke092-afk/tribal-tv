@@ -6,10 +6,10 @@ import java.net.URI
 
 /**
  * App settings over SharedPreferences (spec: no DataStore, no new deps).
- * Keys: playlist_url (falls back to DEFAULT_PLAYLIST_URL), show_logos,
- * the three list-visibility filters, resume_on_launch, data_saver and
- * audio_only — all default off, so behaviour is unchanged until the user
- * opts in.
+ * Keys: playlist_url (legacy single-playlist URL — read exactly once to
+ * seed PlaylistStore on first run, then unused), show_logos, the three
+ * list-visibility filters, resume_on_launch, data_saver and audio_only —
+ * all default off, so behaviour is unchanged until the user opts in.
  */
 class SettingsStore(context: Context) {
 
@@ -18,10 +18,6 @@ class SettingsStore(context: Context) {
 
     fun playlistUrl(): String =
         prefs.getString(KEY_PLAYLIST_URL, DEFAULT_PLAYLIST_URL) ?: DEFAULT_PLAYLIST_URL
-
-    fun setPlaylistUrl(url: String) {
-        prefs.edit().putString(KEY_PLAYLIST_URL, url).apply()
-    }
 
     fun showLogos(): Boolean = prefs.getBoolean(KEY_SHOW_LOGOS, true)
 

@@ -5,14 +5,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -26,16 +32,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 /**
  * The whole settings payload in one object, so the dialog can hand the
- * save handler a single value instead of loose parameters.
+ * save handler a single value instead of loose parameters. The playlist
+ * fields describe the registry as of Save: which existing playlist is
+ * active, an optional new playlist to add (adding always activates it),
+ * and the ids of playlists to remove. Everything else is a plain switch.
  */
 data class SettingsDraft(
-    val playlistUrl: String,
+    val selectedPlaylistId: Long,
+    val newPlaylistName: String?,
+    val newPlaylistUrl: String?,
+    val removedPlaylistIds: List<Long>,
     val showLogos: Boolean,
     val hideGeoBlocked: Boolean,
     val hideNot24x7: Boolean,
@@ -46,16 +59,18 @@ data class SettingsDraft(
 )
 
 /**
- * Settings dialog: playlist URL, logo switch, and the list-visibility
- * filters. Saving a changed URL fetches and parses the new playlist BEFORE
- * the persisted URL or the Room cache is touched — a bad URL or an empty
- * playlist leaves everything exactly as it was, with the error shown
- * inline under the field.
+ * Settings dialog: the playlist registry (tap a row to make it active on
+ * save, + to add one, ✕ to remove a non-active one), then the switches.
+ * Any change that swaps the active playlist makes the app fetch and parse
+ * it BEFORE anything is persisted or the Room cache is replaced — a bad
+ * URL or an empty playlist leaves everything exactly as it was, with the
+ * error shown inline.
  */
 @OptIn(ExperimentalMaterial3Api::class) // harmless if this AlertDialog overload is stable in our version
 @Composable
 fun SettingsDialog(
-    currentUrl: String,
+    playlists: List<SavedPlaylist>,
+    initialActivePlaylistId: Long,
     initialShowLogos: Boolean,
     initialHideGeoBlocked: Boolean,
     initialHideNot24x7: Boolean,
@@ -66,7 +81,11 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     onSave: suspend (SettingsDraft) -> String?
 ) {
-    var urlText by remember { mutableStateOf(currentUrl) }
+    var selectedPlaylistId by remember { mutableStateOf(initialActivePlaylistId) }
+    var addingNew by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    var newUrl by remember { mutableStateOf("") }
+    var removedPlaylistIds by remember { mutableStateOf(emptyList<Long>()) }
     var showLogos by remember { mutableStateOf(initialShowLogos) }
     var hideGeoBlocked by remember { mutableStateOf(initialHideGeoBlocked) }
     var hideNot24x7 by remember { mutableStateOf(initialHideNot24x7) }
@@ -77,6 +96,8 @@ fun SettingsDialog(
     var errorText by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    val visiblePlaylists = playlists.filter { it.id !in removedPlaylistIds }
 
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
@@ -90,44 +111,150 @@ fun SettingsDialog(
             )
         },
         text = {
-            Column {
-                OutlinedTextField(
-                    value = urlText,
-                    onValueChange = {
-                        urlText = it
-                        errorText = null
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = {
-                        Text(
-                            text = "Playlist URL",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = "Playlists",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(4.dp))
+                visiblePlaylists.forEach { playlist ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        RadioButton(
+                            selected = playlist.id == selectedPlaylistId,
+                            onClick = {
+                                selectedPlaylistId = playlist.id
+                                errorText = null
+                            }
                         )
-                    },
-                    isError = errorText != null,
-                    supportingText = errorText?.let { message ->
-                        {
+                        Column(Modifier.weight(1f)) {
                             Text(
-                                text = message,
-                                color = MaterialTheme.colorScheme.error
+                                text = playlist.name,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = playlist.url,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                        cursorColor = MaterialTheme.colorScheme.primary
-                    )
-                )
-                TextButton(onClick = { urlText = SettingsStore.DEFAULT_PLAYLIST_URL }) {
-                    Text(
-                        text = "Reset to default",
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                        // The playlist that will be active can't be
+                        // removed, and the registry must never end up
+                        // empty — both enforced right here.
+                        IconButton(
+                            onClick = { removedPlaylistIds = removedPlaylistIds + playlist.id },
+                            enabled = playlist.id != selectedPlaylistId && visiblePlaylists.size > 1
+                        ) {
+                            Icon(
+                                imageVector = TribalIcons.Close,
+                                contentDescription = "Remove playlist",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
+                if (addingNew) {
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = {
+                            newName = it
+                            errorText = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = {
+                            Text(
+                                text = "Name",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            cursorColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    OutlinedTextField(
+                        value = newUrl,
+                        onValueChange = {
+                            newUrl = it
+                            errorText = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = {
+                            Text(
+                                text = "Playlist URL",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        isError = errorText != null,
+                        supportingText = errorText?.let { message ->
+                            {
+                                Text(
+                                    text = message,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            cursorColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    TextButton(onClick = { newUrl = SettingsStore.DEFAULT_PLAYLIST_URL }) {
+                        Text(
+                            text = "Use default playlist URL",
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            addingNew = false
+                            newName = ""
+                            newUrl = ""
+                            errorText = null
+                        }
+                    ) {
+                        Text(
+                            text = "Cancel adding",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    TextButton(onClick = { addingNew = true }) {
+                        Text(
+                            text = "+ Add playlist",
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    // A failed switch of an existing playlist has no text
+                    // field to attach to — surface the error here.
+                    errorText?.let { message ->
+                        Text(
+                            text = message,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 SettingSwitch("Resume last channel on launch", resumeOnLaunch) { resumeOnLaunch = it }
                 SettingSwitch("Data saver (cap video quality)", dataSaver) { dataSaver = it }
                 SettingSwitch("Audio only (play sound, no video)", audioOnly) { audioOnly = it }
@@ -157,15 +284,21 @@ fun SettingsDialog(
             TextButton(
                 enabled = !isSaving,
                 onClick = {
-                    val trimmed = urlText.trim()
-                    if (!isValidPlaylistUrl(trimmed)) {
+                    val name = newName.trim()
+                    val url = newUrl.trim()
+                    if (addingNew && name.isEmpty()) {
+                        errorText = "Give the playlist a name."
+                    } else if (addingNew && !isValidPlaylistUrl(url)) {
                         errorText = "Enter a valid http(s) playlist URL."
                     } else {
                         scope.launch {
                             isSaving = true
                             val error = onSave(
                                 SettingsDraft(
-                                    playlistUrl = trimmed,
+                                    selectedPlaylistId = if (addingNew) NEW_PLAYLIST_ID else selectedPlaylistId,
+                                    newPlaylistName = if (addingNew) name else null,
+                                    newPlaylistUrl = if (addingNew) url else null,
+                                    removedPlaylistIds = removedPlaylistIds,
                                     showLogos = showLogos,
                                     hideGeoBlocked = hideGeoBlocked,
                                     hideNot24x7 = hideNot24x7,
