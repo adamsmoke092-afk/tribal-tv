@@ -12,8 +12,14 @@ import java.net.URL
  * Cache-first: getChannels() serves the Room cache if it's non-empty and
  * only hits the network on first run. Call refreshChannels() explicitly
  * (e.g. a pull-to-refresh) to force a re-fetch and replace the cache.
+ * onRefreshed fires after every successful fetch-and-cache-replace —
+ * every fetch path goes through here, so it's the single point the
+ * "Updated X ago" label can trust.
  */
-class PlaylistRepository(private val channelDao: ChannelDao) {
+class PlaylistRepository(
+    private val channelDao: ChannelDao,
+    private val onRefreshed: () -> Unit = {}
+) {
 
     companion object {
         private const val CONNECT_TIMEOUT_MS = 15_000
@@ -37,6 +43,7 @@ class PlaylistRepository(private val channelDao: ChannelDao) {
             throw IllegalStateException("No channels found in that playlist")
         }
         channelDao.replaceAll(channels.map { it.toEntity() })
+        onRefreshed()
         channels
     }
 

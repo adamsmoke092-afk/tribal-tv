@@ -109,12 +109,20 @@ fun IptvApp(
         onDispose { player.removeListener(listener) }
     }
 
+    // Recomputed whenever the channel data changes (a successful refresh
+    // swaps the list); it doesn't tick between refreshes, which is fine
+    // for a label that always refers to the last fetch.
+    val lastRefreshText = remember(channels) {
+        formatLastRefreshText(System.currentTimeMillis(), settings.lastRefreshMs())
+    }
+
     val current = selectedChannel
     if (current == null) {
         ChannelListScreen(
             channels = channels,
             error = loadError,
             isRefreshing = isRefreshing,
+            lastRefreshText = lastRefreshText,
             playingUrl = playingUrl,
             showLogos = showLogos,
             gridLayout = gridLayout,

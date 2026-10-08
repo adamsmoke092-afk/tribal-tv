@@ -109,3 +109,20 @@ fun applyFilters(
         }
     }
 }
+
+/**
+ * "Updated X ago" label for the channel list, from the wall-clock ms of
+ * the last successful playlist fetch. Pure clock math — JVM-testable; a
+ * non-positive timestamp (never refreshed) or a future one (clock skew)
+ * degrades gracefully instead of showing a lie.
+ */
+fun formatLastRefreshText(nowMs: Long, refreshedMs: Long): String? {
+    if (refreshedMs <= 0) return null
+    val minutes = (nowMs - refreshedMs) / 60_000
+    return when {
+        minutes < 1 -> "Updated just now"
+        minutes < 60 -> "Updated ${minutes}m ago"
+        minutes < 24 * 60 -> "Updated ${minutes / 60}h ago"
+        else -> "Updated ${minutes / (24 * 60)}d ago"
+    }
+}

@@ -82,8 +82,11 @@ class MainActivity : ComponentActivity() {
             // Singleton already configured on this process; reuse it.
         }
 
-        repository = PlaylistRepository(AppDatabase.getInstance(this).channelDao())
         settings = SettingsStore(this)
+        repository = PlaylistRepository(
+            AppDatabase.getInstance(this).channelDao(),
+            onRefreshed = { settings.setLastRefreshMs(System.currentTimeMillis()) }
+        )
         playlistStore = PlaylistStore(this)
         playlistStore.ensureSeeded(settings.playlistUrl())
         favouritesStore = FavouritesStore(this)

@@ -27,6 +27,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -72,8 +74,10 @@ import com.example.iptvapp.playlist.M3uChannel
  * groups drop out. Query and search-mode survive rotation
  * (rememberSaveable + configChanges). Batch B: the list is wrapped in
  * material3's PullToRefreshBox — drag down on the list to refresh.
- * Batch D: the row the session is currently playing gets a chip, and the
- * "Grid layout" setting swaps the rows for logo tiles.
+ * Batch D: the row the session is currently playing gets a chip, the
+ * "Grid layout" setting swaps the rows for logo tiles, an "Updated X ago"
+ * label sits under the top bar, and a dead first-load gets a Retry
+ * button.
  */
 @OptIn(ExperimentalMaterial3Api::class) // PullToRefreshBox is experimental in material3 1.3.0
 @Composable
@@ -81,6 +85,7 @@ fun ChannelListScreen(
     channels: List<M3uChannel>,
     error: String?,
     isRefreshing: Boolean,
+    lastRefreshText: String?,
     playingUrl: String?,
     showLogos: Boolean,
     gridLayout: Boolean,
@@ -178,12 +183,45 @@ fun ChannelListScreen(
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
 
+        if (lastRefreshText != null) {
+            Text(
+                text = lastRefreshText,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp)
+            )
+        }
+
         if (error != null) {
             Text(
                 text = error,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(16.dp)
             )
+            // Nothing cached and the playlist won't load: the only way
+            // forward is another fetch, so offer it directly.
+            if (channels.isEmpty()) {
+                if (isRefreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(start = 16.dp)
+                            .size(24.dp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Button(
+                        onClick = onRefresh,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    ) {
+                        Text("Retry")
+                    }
+                }
+            }
         }
 
         if (channels.isEmpty() && error == null) {

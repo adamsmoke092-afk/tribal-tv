@@ -68,6 +68,13 @@ class SettingsStore(context: Context) {
         prefs.edit().putBoolean(KEY_GRID_LAYOUT, enabled).apply()
     }
 
+    /** Wall-clock ms of the last successful playlist fetch; 0 = never. */
+    fun lastRefreshMs(): Long = prefs.getLong(KEY_LAST_REFRESH_MS, 0L)
+
+    fun setLastRefreshMs(ms: Long) {
+        prefs.edit().putLong(KEY_LAST_REFRESH_MS, ms).apply()
+    }
+
     companion object {
         const val DEFAULT_PLAYLIST_URL = "https://iptv-org.github.io/iptv/countries/za.m3u"
 
@@ -80,6 +87,7 @@ class SettingsStore(context: Context) {
         private const val KEY_DATA_SAVER = "data_saver"
         private const val KEY_AUDIO_ONLY = "audio_only"
         private const val KEY_GRID_LAYOUT = "grid_layout"
+        private const val KEY_LAST_REFRESH_MS = "last_refresh_ms"
     }
 }
 
