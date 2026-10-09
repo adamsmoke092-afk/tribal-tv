@@ -19,9 +19,33 @@ android {
         versionName = "0.1.0"
     }
 
+    // Release signing comes entirely from env vars (the CI release job
+    // decodes the TRIBAL_TV_KEYSTORE_B64 secret into a file and passes
+    // these). With none set — local builds, or CI before the keystore
+    // secret exists — release simply builds unsigned and nothing else
+    // changes.
+    val keystoreFile = System.getenv("TRIBAL_TV_KEYSTORE_FILE")
+    val keystorePassword = System.getenv("TRIBAL_TV_KEYSTORE_PASSWORD")
+    val keyAlias = System.getenv("TRIBAL_TV_KEY_ALIAS")
+    val keyPassword = System.getenv("TRIBAL_TV_KEY_PASSWORD")
+
+    signingConfigs {
+        if (keystoreFile != null && keystorePassword != null && keyAlias != null && keyPassword != null) {
+            create("release") {
+                storeFile = file(keystoreFile)
+                storePassword = keystorePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (keystoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
