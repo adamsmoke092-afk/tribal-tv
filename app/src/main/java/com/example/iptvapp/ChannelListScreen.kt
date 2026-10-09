@@ -279,7 +279,9 @@ fun ChannelListScreen(
                                         channel = channel,
                                         showLogos = showLogos,
                                         isPlaying = channel.streamUrl == playingUrl,
+                                        isFavourite = channel.streamUrl in favourites,
                                         isDead = channel.streamUrl in deadChannels,
+                                        onToggleFavourite = { onToggleFavourite(channel) },
                                         onClick = { onChannelSelected(channel) }
                                     )
                                 }
@@ -407,17 +409,19 @@ private fun ChannelRow(
 }
 
 /**
- * Grid mode cell: big centered avatar, a small accent dot on the avatar
- * corner when this is the playing channel, and a 2-line name underneath.
- * Deliberately no favourite star or chips in grid mode — tap plays, and
- * list mode remains the place for details.
+ * Grid mode cell: big centered avatar with a favourite star at the
+ * top-start corner and a small accent dot at the top-end when this is
+ * the playing channel, then a 2-line name underneath. Chips stay
+ * list-only — the grid stays tiles.
  */
 @Composable
 private fun ChannelGridCell(
     channel: M3uChannel,
     showLogos: Boolean,
     isPlaying: Boolean,
+    isFavourite: Boolean,
     isDead: Boolean,
+    onToggleFavourite: () -> Unit,
     onClick: () -> Unit
 ) {
     val display = remember(channel.name) { parseDisplay(channel.name) }
@@ -444,6 +448,23 @@ private fun ChannelGridCell(
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary)
                         .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                )
+            }
+            // Favourite star on the avatar's other top corner; a compact
+            // IconButton keeps the touch target small so the rest of the
+            // tile stays tap-to-play.
+            IconButton(
+                onClick = onToggleFavourite,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .size(28.dp)
+            ) {
+                Icon(
+                    imageVector = TribalIcons.Star,
+                    contentDescription = if (isFavourite) "Remove favourite" else "Add favourite",
+                    tint = if (isFavourite) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
