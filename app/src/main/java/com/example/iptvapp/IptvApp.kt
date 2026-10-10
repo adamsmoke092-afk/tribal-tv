@@ -58,10 +58,12 @@ fun IptvApp(
     var resumeOnLaunch by remember { mutableStateOf(settings.resumeOnLaunch()) }
     var dataSaver by remember { mutableStateOf(settings.dataSaver()) }
     var audioOnly by remember { mutableStateOf(settings.audioOnly()) }
-    var gridLayout by remember { mutableStateOf(settings.gridLayout()) }
     var resumedLast by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
+    // The ordered channel list the user is currently looking at — the
+    // player's prev/next buttons zap through it.
+    var playSequence by remember { mutableStateOf(emptyList<M3uChannel>()) }
     // mediaId == streamUrl of whatever the session is playing; the list
     // flags that row. Seeded from the current item so reconnecting to an
     // already-playing session starts correct.
@@ -73,6 +75,18 @@ fun IptvApp(
             channels = repository.getChannels(playlistUrl)
         } catch (e: Exception) {
             loadError = "Failed to load playlist: ${e.message}"
+        }
+        // Cache older than a day: refresh silently in the background while
+        // the cache keeps serving. A failure keeps the cache and only
+        // shows the non-blocking banner (no Retry button — channels are
+        // on screen to pull-to-refresh).
+        if (System.currentTimeMillis() - settings.lastRefreshMs() > STALE_PLAYLIST_MS) {
+            try {
+                channels = repository.refreshChannels(playlistUrl)
+                loadError = null
+            } catch (e: Exception) {
+                loadError = "Background refresh failed — showing cached channels"
+            }
         }
     }
 
@@ -116,6 +130,23 @@ fun IptvApp(
         formatLastRefreshText(System.currentTimeMillis(), settings.lastRefreshMs())
     }
 
+    // Channel zapping: moves through the list the user came from,
+    // skipping offline channels where possible, wrapping around at the
+    // ends — friendlier for TV flipping than stopping dead.
+    fun moveChannel(from: M3uChannel, delta: Int) {
+        val alive = playSequence
+            .filterNot { it.streamUrl in deadChannels }
+            .ifEmpty { playSequence }
+        if (alive.isEmpty()) return
+        val index = alive.indexOfFirst { it.streamUrl == from.streamUrl }
+        if (index < 0) return
+        val next = alive[(index + delta).mod(alive.size)]
+        PlayerFactory.loadChannel(player, next.streamUrl)
+        selectedChannel = next
+        recentsStore.add(next.streamUrl)
+        recents = recentsStore.recents()
+    }
+
     val current = selectedChannel
     if (current == null) {
         ChannelListScreen(
@@ -125,7 +156,6 @@ fun IptvApp(
             lastRefreshText = lastRefreshText,
             playingUrl = playingUrl,
             showLogos = showLogos,
-            gridLayout = gridLayout,
             hideGeoBlocked = hideGeoBlocked,
             hideNot24x7 = hideNot24x7,
             hdOnly = hdOnly,
@@ -158,7 +188,8 @@ fun IptvApp(
                     }
                 }
             },
-            onOpenSettings = { showSettings = true }
+            onOpenSettings = { showSettings = true },
+            onPlaySequenceChanged = { playSequence = it }
         )
 
         if (showSettings) {
@@ -172,7 +203,6 @@ fun IptvApp(
                 initialResumeOnLaunch = resumeOnLaunch,
                 initialDataSaver = dataSaver,
                 initialAudioOnly = audioOnly,
-                initialGridLayout = gridLayout,
                 onDismiss = { showSettings = false },
                 onSave = { draft ->
                     try {
@@ -218,10 +248,6 @@ fun IptvApp(
                             showLogos = draft.showLogos
                             settings.setShowLogos(draft.showLogos)
                         }
-                        if (draft.gridLayout != gridLayout) {
-                            gridLayout = draft.gridLayout
-                            settings.setGridLayout(draft.gridLayout)
-                        }
                         if (draft.hideGeoBlocked != hideGeoBlocked) {
                             hideGeoBlocked = draft.hideGeoBlocked
                             settings.setHideGeoBlocked(draft.hideGeoBlocked)
@@ -259,6 +285,20 @@ fun IptvApp(
             player = player,
             channelName = current.name,
             isInPip = isInPip,
+            dataSaver = dataSaver,
+            audioOnly = audioOnly,
+            onToggleDataSaver = {
+                dataSaver = !dataSaver
+                settings.setDataSaver(dataSaver)
+                applyPlaybackPreferences(player, dataSaver, audioOnly)
+            },
+            onToggleAudioOnly = {
+                audioOnly = !audioOnly
+                settings.setAudioOnly(audioOnly)
+                applyPlaybackPreferences(player, dataSaver, audioOnly)
+            },
+            onPrevChannel = { moveChannel(current, -1) },
+            onNextChannel = { moveChannel(current, 1) },
             onPlaybackFailed = {
                 // Audio-only mode fails on a stream with no audio track;
                 // that failure says nothing about the channel being dead.

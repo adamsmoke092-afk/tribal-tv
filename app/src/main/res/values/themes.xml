@@ -12,5 +12,8 @@
         <item name="android:statusBarColor">@color/brand_background</item>
         <item name="android:navigationBarColor">@color/brand_background</item>
         <item name="android:windowLightStatusBar">false</item>
+        <!-- Media3 PlayerView reads the platform accent for its scrubber
+             and progress bar. -->
+        <item name="android:colorAccent">@color/gold_accent</item>
     </style>
 </resources>

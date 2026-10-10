@@ -6,19 +6,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -31,7 +37,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,17 +61,21 @@ data class SettingsDraft(
     val hdOnly: Boolean,
     val resumeOnLaunch: Boolean,
     val dataSaver: Boolean,
-    val audioOnly: Boolean,
-    val gridLayout: Boolean
+    val audioOnly: Boolean
 )
 
 /**
- * Settings dialog: the playlist registry (tap a row to make it active on
- * save, + to add one, ✕ to remove a non-active one), then the switches.
- * Any change that swaps the active playlist makes the app fetch and parse
- * it BEFORE anything is persisted or the Room cache is replaced — a bad
- * URL or an empty playlist leaves everything exactly as it was, with the
- * error shown inline.
+ * Settings dialog, strict black/gold. Surface background with 20dp
+ * corners, a divider under the title and above the action row, a
+ * scrollable body with real content padding, and toggles that read
+ * clearly on and off (gold track when on; card track with a disabled
+ * border and thumb when off) with a one-line gray description each.
+ *
+ * Playlist rows carry the URL on two lines; delete asks for confirmation
+ * and is refused for the last remaining playlist. Any change that swaps
+ * the active playlist makes the app fetch and parse it BEFORE anything is
+ * persisted or the cache is replaced — a bad URL or empty playlist leaves
+ * everything exactly as it was, with the error shown inline.
  */
 @OptIn(ExperimentalMaterial3Api::class) // harmless if this AlertDialog overload is stable in our version
 @Composable
@@ -80,7 +89,6 @@ fun SettingsDialog(
     initialResumeOnLaunch: Boolean,
     initialDataSaver: Boolean,
     initialAudioOnly: Boolean,
-    initialGridLayout: Boolean,
     onDismiss: () -> Unit,
     onSave: suspend (SettingsDraft) -> String?
 ) {
@@ -89,6 +97,7 @@ fun SettingsDialog(
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
     var removedPlaylistIds by remember { mutableStateOf(emptyList<Long>()) }
+    var pendingDeleteId by remember { mutableStateOf<Long?>(null) }
     // Rename mode: the row being edited and its text buffer. Confirmed
     // renames collect in the map and ride to Save with everything else.
     var renamingPlaylistId by remember { mutableStateOf<Long?>(null) }
@@ -101,7 +110,6 @@ fun SettingsDialog(
     var resumeOnLaunch by remember { mutableStateOf(initialResumeOnLaunch) }
     var dataSaver by remember { mutableStateOf(initialDataSaver) }
     var audioOnly by remember { mutableStateOf(initialAudioOnly) }
-    var gridLayout by remember { mutableStateOf(initialGridLayout) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -110,26 +118,30 @@ fun SettingsDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = PaletteSurface,
+        shape = RoundedCornerShape(20.dp),
         title = {
-            Text(
-                text = "Settings",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Column {
+                Text(
+                    text = "Settings",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = PaletteTextPrimary
+                )
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider(color = PaletteOutline, thickness = 1.dp)
+            }
         },
         text = {
             Column(
                 modifier = Modifier
                     .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState())
+                    .padding(vertical = 4.dp)
             ) {
                 Text(
                     text = "Playlists",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.primary
+                    style = MaterialTheme.typography.labelMedium,
+                    color = PaletteGold
                 )
                 Spacer(Modifier.height(4.dp))
                 visiblePlaylists.forEach { playlist ->
@@ -142,7 +154,11 @@ fun SettingsDialog(
                             onClick = {
                                 selectedPlaylistId = playlist.id
                                 errorText = null
-                            }
+                            },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = PaletteGold,
+                                unselectedColor = PaletteTextSecondary
+                            )
                         )
                         if (renamingPlaylistId == playlist.id) {
                             OutlinedTextField(
@@ -151,17 +167,14 @@ fun SettingsDialog(
                                 modifier = Modifier.weight(1f),
                                 singleLine = true,
                                 label = {
-                                    Text(
-                                        text = "Name",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Text(text = "Name", color = PaletteTextSecondary)
                                 },
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                    cursorColor = MaterialTheme.colorScheme.primary
+                                    focusedTextColor = PaletteTextPrimary,
+                                    unfocusedTextColor = PaletteTextPrimary,
+                                    focusedBorderColor = PaletteGold,
+                                    unfocusedBorderColor = PaletteOutline,
+                                    cursorColor = PaletteGold
                                 )
                             )
                             TextButton(
@@ -176,7 +189,7 @@ fun SettingsDialog(
                                     }
                                 }
                             ) {
-                                Text("OK", color = MaterialTheme.colorScheme.primary)
+                                Text("OK", color = PaletteGold)
                             }
                             TextButton(
                                 onClick = {
@@ -184,23 +197,20 @@ fun SettingsDialog(
                                     errorText = null
                                 }
                             ) {
-                                Text(
-                                    "Cancel",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Text("Cancel", color = PaletteTextSecondary)
                             }
                         } else {
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     text = renamedPlaylists[playlist.id] ?: playlist.name,
                                     fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = PaletteTextPrimary
                                 )
                                 Text(
                                     text = playlist.url,
                                     fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
+                                    color = PaletteTextSecondary,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -208,22 +218,19 @@ fun SettingsDialog(
                                 renamingPlaylistId = playlist.id
                                 renameText = renamedPlaylists[playlist.id] ?: playlist.name
                             }) {
-                                Text(
-                                    text = "Rename",
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                Text(text = "Rename", color = PaletteGold)
                             }
-                            // The playlist that will be active can't be
-                            // removed, and the registry must never end up
-                            // empty — both enforced right here.
+                            // Deletion is confirmed and refused for the
+                            // active playlist and for the last remaining
+                            // one — the registry must never end up empty.
                             IconButton(
-                                onClick = { removedPlaylistIds = removedPlaylistIds + playlist.id },
+                                onClick = { pendingDeleteId = playlist.id },
                                 enabled = playlist.id != selectedPlaylistId && visiblePlaylists.size > 1
                             ) {
                                 Icon(
                                     imageVector = TribalIcons.Close,
-                                    contentDescription = "Remove playlist",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    contentDescription = "Delete playlist",
+                                    tint = PaletteTextSecondary
                                 )
                             }
                         }
@@ -239,17 +246,14 @@ fun SettingsDialog(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         label = {
-                            Text(
-                                text = "Name",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text(text = "Name", color = PaletteTextSecondary)
                         },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                            cursorColor = MaterialTheme.colorScheme.primary
+                            focusedTextColor = PaletteTextPrimary,
+                            unfocusedTextColor = PaletteTextPrimary,
+                            focusedBorderColor = PaletteGold,
+                            unfocusedBorderColor = PaletteOutline,
+                            cursorColor = PaletteGold
                         )
                     )
                     OutlinedTextField(
@@ -261,33 +265,24 @@ fun SettingsDialog(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         label = {
-                            Text(
-                                text = "Playlist URL",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text(text = "Playlist URL", color = PaletteTextSecondary)
                         },
                         isError = errorText != null,
                         supportingText = errorText?.let { message ->
                             {
-                                Text(
-                                    text = message,
-                                    color = MaterialTheme.colorScheme.error
-                                )
+                                Text(text = message, color = PaletteOffline)
                             }
                         },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                            cursorColor = MaterialTheme.colorScheme.primary
+                            focusedTextColor = PaletteTextPrimary,
+                            unfocusedTextColor = PaletteTextPrimary,
+                            focusedBorderColor = PaletteGold,
+                            unfocusedBorderColor = PaletteOutline,
+                            cursorColor = PaletteGold
                         )
                     )
                     TextButton(onClick = { newUrl = SettingsStore.DEFAULT_PLAYLIST_URL }) {
-                        Text(
-                            text = "Use default playlist URL",
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Text(text = "Use default playlist URL", color = PaletteGold)
                     }
                     TextButton(
                         onClick = {
@@ -297,17 +292,11 @@ fun SettingsDialog(
                             errorText = null
                         }
                     ) {
-                        Text(
-                            text = "Cancel adding",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(text = "Cancel adding", color = PaletteTextSecondary)
                     }
                 } else {
                     TextButton(onClick = { addingNew = true }) {
-                        Text(
-                            text = "+ Add playlist",
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Text(text = "+ Add playlist", color = PaletteGold)
                     }
                     // A failed switch of an existing playlist has no text
                     // field to attach to — surface the error here.
@@ -315,39 +304,75 @@ fun SettingsDialog(
                         Text(
                             text = message,
                             fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.error
+                            color = PaletteOffline
                         )
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                SettingSwitch("Resume last channel on launch", resumeOnLaunch) { resumeOnLaunch = it }
-                SettingSwitch("Data saver (cap video quality)", dataSaver) { dataSaver = it }
-                SettingSwitch("Audio only (play sound, no video)", audioOnly) { audioOnly = it }
-                SettingSwitch("Show channel logos", showLogos) { showLogos = it }
-                SettingSwitch("Grid layout (logo tiles)", gridLayout) { gridLayout = it }
-                SettingSwitch("Hide geo-blocked", hideGeoBlocked) { hideGeoBlocked = it }
-                SettingSwitch("Hide Not 24/7", hideNot24x7) { hideNot24x7 = it }
-                SettingSwitch("HD only (720p+)", hdOnly) { hdOnly = it }
+                SettingSwitch(
+                    label = "Resume last channel on launch",
+                    description = "Reopen the last channel when the app starts.",
+                    checked = resumeOnLaunch,
+                    onCheckedChange = { resumeOnLaunch = it }
+                )
+                SettingSwitch(
+                    label = "Data saver",
+                    description = "Caps quality. Only helps channels that offer multiple qualities.",
+                    checked = dataSaver,
+                    onCheckedChange = { dataSaver = it }
+                )
+                SettingSwitch(
+                    label = "Audio only",
+                    description = "Plays sound with no video, for music and radio.",
+                    checked = audioOnly,
+                    onCheckedChange = { audioOnly = it }
+                )
+                SettingSwitch(
+                    label = "Show channel logos",
+                    description = "Loads channel artwork from the playlist.",
+                    checked = showLogos,
+                    onCheckedChange = { showLogos = it }
+                )
+                SettingSwitch(
+                    label = "Hide geo-blocked",
+                    description = "Based on playlist tags, not a live check.",
+                    checked = hideGeoBlocked,
+                    onCheckedChange = { hideGeoBlocked = it }
+                )
+                SettingSwitch(
+                    label = "Hide Not 24/7",
+                    description = "Based on playlist tags, not a live check.",
+                    checked = hideNot24x7,
+                    onCheckedChange = { hideNot24x7 = it }
+                )
+                SettingSwitch(
+                    label = "HD only (720p+)",
+                    description = "Keeps 720p and above; unlisted-quality channels stay.",
+                    checked = hdOnly,
+                    onCheckedChange = { hdOnly = it }
+                )
                 if (isSaving) {
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
+                            color = PaletteGold
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(
                             text = "Loading playlist…",
                             fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = PaletteTextSecondary
                         )
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = PaletteOutline, thickness = 1.dp)
             }
         },
         confirmButton = {
-            TextButton(
+            Button(
                 enabled = !isSaving,
                 onClick = {
                     val name = newName.trim()
@@ -381,17 +406,21 @@ fun SettingsDialog(
                                     hdOnly = hdOnly,
                                     resumeOnLaunch = resumeOnLaunch,
                                     dataSaver = dataSaver,
-                                    audioOnly = audioOnly,
-                                    gridLayout = gridLayout
+                                    audioOnly = audioOnly
                                 )
                             )
                             isSaving = false
                             if (error == null) onDismiss() else errorText = error
                         }
                     }
-                }
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = PaletteGold,
+                    contentColor = PaletteBackground
+                )
             ) {
-                Text("Save", color = MaterialTheme.colorScheme.primary)
+                Text("Save")
             }
         },
         dismissButton = {
@@ -399,30 +428,83 @@ fun SettingsDialog(
                 enabled = !isSaving,
                 onClick = onDismiss
             ) {
-                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Cancel", color = PaletteTextSecondary)
             }
         }
     )
+
+    // Deletion confirmation — its own compact dialog over the settings one.
+    if (pendingDeleteId != null) {
+        AlertDialog(
+            onDismissRequest = { pendingDeleteId = null },
+            containerColor = PaletteSurface,
+            shape = RoundedCornerShape(20.dp),
+            title = {
+                Text(
+                    text = "Delete this playlist?",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = PaletteTextPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "It will be removed from the list. Favorites and history are kept.",
+                    color = PaletteTextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDeleteId?.let { removedPlaylistIds = removedPlaylistIds + it }
+                    pendingDeleteId = null
+                }) {
+                    Text("Delete", color = PaletteOffline)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteId = null }) {
+                    Text("Cancel", color = PaletteTextSecondary)
+                }
+            }
+        )
+    }
 }
 
 @Composable
-private fun SettingSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun SettingSwitch(
+    label: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
     ) {
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f)
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                color = PaletteTextPrimary
+            )
+            Text(
+                text = description,
+                fontSize = 11.sp,
+                color = PaletteTextSecondary
+            )
+        }
+        Spacer(Modifier.width(12.dp))
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                checkedThumbColor = MaterialTheme.colorScheme.onPrimary
+                checkedThumbColor = PaletteBackground,
+                checkedTrackColor = PaletteGold,
+                checkedBorderColor = PaletteGold,
+                uncheckedThumbColor = PaletteDisabled,
+                uncheckedTrackColor = PaletteCard,
+                uncheckedBorderColor = PaletteDisabled
             )
         )
     }

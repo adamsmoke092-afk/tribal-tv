@@ -1,13 +1,17 @@
 package com.example.iptvapp
 
 import android.Manifest
+import android.app.PictureInPictureParams
 import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +41,11 @@ import com.google.common.util.concurrent.ListenableFuture
  * ExoPlayer used to go. The Compose tree shows a spinner until the
  * controller connects.
  */
+
+// Strict-black scrim for the system bars — same color as the window
+// background, so launch and edge-to-edge never flash another color.
+private val BarScrimColor = 0xFF0A0A0A.toInt()
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var repository: PlaylistRepository
@@ -63,6 +72,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Strict-black system bars with light icons (the platform theme
+        // already sets the launch colors; this keeps them once Compose
+        // takes over). Huawei EMUI may override system bar styling — this
+        // is the standard approach, nothing more we can do from here.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(BarScrimColor),
+            navigationBarStyle = SystemBarStyle.dark(BarScrimColor)
+        )
 
         // Android 13+ hides the media notification without this permission
         // — background playback would be invisible and uncontrollable.
@@ -141,6 +159,26 @@ class MainActivity : ComponentActivity() {
                 }
             },
             ContextCompat.getMainExecutor(this)
+        )
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        val controller = mediaController.value ?: return
+        if (isFinishing || isInPictureInPictureMode) return
+        if (!controller.playWhenReady || controller.currentMediaItem == null) return
+        // Home while playing shrinks to PiP instead of dropping straight
+        // to background audio (API 26+ — the app's floor IS 26; the guard
+        // documents the contract). Dismissing the PiP window still lands
+        // in background-audio mode with the media notification.
+        if (Build.VERSION.SDK_INT < 26) return
+        val size = controller.videoSize
+        val aspect = if (
+            size.width > 0 && size.height > 0 &&
+            size.width.toFloat() / size.height in 0.5f..2.0f
+        ) Rational(size.width, size.height) else Rational(16, 9)
+        enterPictureInPictureMode(
+            PictureInPictureParams.Builder().setAspectRatio(aspect).build()
         )
     }
 

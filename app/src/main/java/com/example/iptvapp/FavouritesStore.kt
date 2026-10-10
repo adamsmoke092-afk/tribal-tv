@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import com.example.iptvapp.playlist.M3uChannel
 
 /** Name of the synthetic group pinned to the top of the list. */
-const val FAVOURITES_GROUP = "Favourites"
+const val FAVOURITES_GROUP = "Favorites"
 
 /**
  * Favourites, stored as a set of stream URLs in SharedPreferences —

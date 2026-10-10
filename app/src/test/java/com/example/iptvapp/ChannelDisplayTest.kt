@@ -74,14 +74,14 @@ class ChannelDisplayTest {
     }
 
     @Test
-    fun `null or empty group title is ungrouped`() {
-        assertEquals(listOf("Ungrouped"), categoriesForGroupTitle(null))
-        assertEquals(listOf("Ungrouped"), categoriesForGroupTitle(""))
-        assertEquals(listOf("Ungrouped"), categoriesForGroupTitle(" ; "))
+    fun `null or empty group title is other`() {
+        assertEquals(listOf("Other"), categoriesForGroupTitle(null))
+        assertEquals(listOf("Other"), categoriesForGroupTitle(""))
+        assertEquals(listOf("Other"), categoriesForGroupTitle(" ; "))
     }
 
     @Test
-    fun `grouped channels sorted alphabetically with ungrouped last`() {
+    fun `grouped channels sorted alphabetically with other last`() {
         val channels = listOf(
             M3uChannel("A", "http://a", groupTitle = "Zulu"),
             M3uChannel("B", "http://b", groupTitle = "News"),
@@ -89,7 +89,7 @@ class ChannelDisplayTest {
             M3uChannel("D", "http://d", groupTitle = "News;Sport")
         )
         val grouped = groupChannels(channels)
-        assertEquals(listOf("News", "Sport", "Zulu", "Ungrouped"), grouped.map { it.first })
+        assertEquals(listOf("News", "Sport", "Zulu", "Other"), grouped.map { it.first })
         // D appears under both of its categories.
         assertEquals(2, grouped.first { it.first == "News" }.second.size)
         assertEquals(listOf("D"), grouped.first { it.first == "Sport" }.second.map { it.name })
@@ -197,5 +197,43 @@ class ChannelDisplayTest {
         )
         val result = applyFilters(channels, hideGeoBlocked = true, hideNot24x7 = false, hdOnly = true)
         assertEquals(listOf("D (1080p)"), result.map { it.name })
+    }
+
+    @Test
+    fun `chip filter All keeps everything`() {
+        val channels = listOf(M3uChannel("A", "http://a", groupTitle = "News"))
+        assertEquals(channels, applyChipFilter(CHIP_ALL, channels, emptySet()))
+    }
+
+    @Test
+    fun `chip filter Favorites keeps only favourites`() {
+        val channels = listOf(
+            M3uChannel("A", "http://a"),
+            M3uChannel("B", "http://b")
+        )
+        assertEquals(
+            listOf("A"),
+            applyChipFilter(CHIP_FAVOURITES, channels, setOf("http://a")).map { it.name }
+        )
+    }
+
+    @Test
+    fun `chip filter by group name matches membership`() {
+        val channels = listOf(
+            M3uChannel("A", "http://a", groupTitle = "News;Sport"),
+            M3uChannel("B", "http://b", groupTitle = "Music")
+        )
+        assertEquals(listOf("A"), applyChipFilter("Sport", channels, emptySet()).map { it.name })
+    }
+
+    @Test
+    fun `offline channels sort to the end keeping relative order`() {
+        val channels = listOf(
+            M3uChannel("A", "http://a"),
+            M3uChannel("B", "http://b"),
+            M3uChannel("C", "http://c")
+        )
+        val result = sortOfflineLast(channels, setOf("http://c", "http://a"))
+        assertEquals(listOf("B", "A", "C"), result.map { it.name })
     }
 }

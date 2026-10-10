@@ -6,24 +6,22 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,15 +29,16 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,7 +55,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -64,20 +62,18 @@ import coil3.request.ImageRequest
 import com.example.iptvapp.playlist.M3uChannel
 
 /**
- * Dark cinema channel list. Custom top bar instead of TopAppBar to keep
- * full control of colors; flattened LazyColumn with plain header items
- * (sticky headers skipped — needs an experimental opt-in and adds nothing
- * the plain row doesn't on this device).
+ * Channel list — the strict black/gold tile grid (professional redesign).
+ * One list, no modes. Under the top bar: horizontally scrolling filter
+ * chips (All / Favorites / each group), a live search field, full-span
+ * gold group headers with counts, and 12dp-cornered tiles — logo on a
+ * light backing square (a gray letter tile when there's no logo), 2-line
+ * centered labels, a 40dp favourite star at the tile's top-right, 50%
+ * dimming plus an "Offline" label for failed channels, and a 2dp gold
+ * border on the playing channel.
  *
- * Feature batch: a search icon swaps the title for an inline search field;
- * filtering is live, group counts follow the filtered results, and empty
- * groups drop out. Query and search-mode survive rotation
- * (rememberSaveable + configChanges). Batch B: the list is wrapped in
- * material3's PullToRefreshBox — drag down on the list to refresh.
- * Batch D: the row the session is currently playing gets a chip, the
- * "Grid layout" setting swaps the rows for logo tiles, an "Updated X ago"
- * label sits under the top bar, and a dead first-load gets a Retry
- * button.
+ * All list math (search, filters, chip filtering, offline sorting,
+ * grouping) lives in ChannelDisplay.kt and stays JVM-tested; this file
+ * is pure presentation.
  */
 @OptIn(ExperimentalMaterial3Api::class) // PullToRefreshBox is experimental in material3 1.3.0
 @Composable
@@ -88,7 +84,6 @@ fun ChannelListScreen(
     lastRefreshText: String?,
     playingUrl: String?,
     showLogos: Boolean,
-    gridLayout: Boolean,
     hideGeoBlocked: Boolean,
     hideNot24x7: Boolean,
     hdOnly: Boolean,
@@ -98,20 +93,37 @@ fun ChannelListScreen(
     onToggleFavourite: (M3uChannel) -> Unit,
     onChannelSelected: (M3uChannel) -> Unit,
     onRefresh: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onPlaySequenceChanged: (List<M3uChannel>) -> Unit
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearching by rememberSaveable { mutableStateOf(false) }
+    var selectedChip by rememberSaveable { mutableStateOf(CHIP_ALL) }
     val focusManager = LocalFocusManager.current
+
+    // The zap order the player's prev/next buttons move through: exactly
+    // what the user sees, deduplicated by URL (a channel in several
+    // groups is one entry). Offline skipping happens at zap time.
+    LaunchedEffect(channels, searchQuery, selectedChip, hideGeoBlocked, hideNot24x7, hdOnly, favourites) {
+        val filtered = applyChipFilter(
+            selectedChip,
+            applyFilters(channels, hideGeoBlocked, hideNot24x7, hdOnly),
+            favourites
+        )
+        onPlaySequenceChanged(
+            filterChannels(searchQuery, filtered).distinctBy { it.streamUrl }
+        )
+    }
 
     Column(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(PaletteBackground)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -125,19 +137,21 @@ fun ChannelListScreen(
                         Text(
                             text = "Search channels",
                             fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = PaletteTextSecondary
                         )
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        focusedTextColor = PaletteTextPrimary,
+                        unfocusedTextColor = PaletteTextPrimary,
+                        focusedBorderColor = PaletteGold,
+                        unfocusedBorderColor = PaletteOutline,
+                        cursorColor = PaletteGold,
+                        focusedPlaceholderColor = PaletteTextSecondary,
+                        unfocusedPlaceholderColor = PaletteTextSecondary,
+                        focusedContainerColor = PaletteSurface,
+                        unfocusedContainerColor = PaletteSurface
                     )
                 )
                 IconButton(onClick = {
@@ -147,55 +161,75 @@ fun ChannelListScreen(
                     Icon(
                         imageVector = TribalIcons.Close,
                         contentDescription = if (searchQuery.isNotEmpty()) "Clear search" else "Close search",
-                        tint = MaterialTheme.colorScheme.onBackground
+                        tint = PaletteTextPrimary
                     )
                 }
             } else {
                 Text(
-                    text = "Channels",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    text = "Tribal TV",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = PaletteTextPrimary,
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = { isSearching = true }) {
                     Icon(
                         imageVector = TribalIcons.Search,
                         contentDescription = "Search",
-                        tint = MaterialTheme.colorScheme.onBackground
+                        tint = PaletteTextPrimary
                     )
                 }
                 IconButton(onClick = onRefresh) {
                     Icon(
                         imageVector = TribalIcons.Refresh,
                         contentDescription = "Refresh",
-                        tint = MaterialTheme.colorScheme.onBackground
+                        tint = PaletteTextPrimary
                     )
                 }
                 IconButton(onClick = onOpenSettings) {
                     Icon(
                         imageVector = TribalIcons.Settings,
                         contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onBackground
+                        tint = PaletteTextPrimary
                     )
                 }
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
+        HorizontalDivider(color = PaletteOutline, thickness = 1.dp)
 
         if (lastRefreshText != null) {
             Text(
                 text = lastRefreshText,
                 fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp)
+                color = PaletteTextSecondary,
+                modifier = Modifier.padding(start = 16.dp, top = 6.dp)
             )
+        }
+
+        // ---- Filter chips: All, Favorites, then each group. Real groups
+        // named like the synthetic chips are skipped so LazyRow keys
+        // stay unique.
+        val chipNames = remember(channels) {
+            val groups = groupChannels(channels).map { it.first }
+                .filterNot { it == CHIP_ALL || it == CHIP_FAVOURITES }
+            listOf(CHIP_ALL, CHIP_FAVOURITES) + groups
+        }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(items = chipNames, key = { it }) { chip ->
+                FilterChipView(
+                    label = chip,
+                    selected = chip == selectedChip,
+                    onClick = { selectedChip = chip }
+                )
+            }
         }
 
         if (error != null) {
             Text(
                 text = error,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = PaletteTextPrimary,
                 modifier = Modifier.padding(16.dp)
             )
             // Nothing cached and the playlist won't load: the only way
@@ -206,15 +240,15 @@ fun ChannelListScreen(
                         modifier = Modifier
                             .padding(start = 16.dp)
                             .size(24.dp),
-                        color = MaterialTheme.colorScheme.primary
+                        color = PaletteGold
                     )
                 } else {
                     Button(
                         onClick = onRefresh,
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
+                            containerColor = PaletteGold,
+                            contentColor = PaletteBackground
                         ),
                         modifier = Modifier.padding(horizontal = 16.dp)
                     ) {
@@ -226,94 +260,96 @@ fun ChannelListScreen(
 
         if (channels.isEmpty() && error == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                CircularProgressIndicator(color = PaletteGold)
             }
         } else {
-            val visible = remember(channels, searchQuery, hideGeoBlocked, hideNot24x7, hdOnly) {
+            val visible = remember(
+                channels, searchQuery, selectedChip,
+                hideGeoBlocked, hideNot24x7, hdOnly, favourites
+            ) {
                 filterChannels(
                     searchQuery,
-                    applyFilters(channels, hideGeoBlocked, hideNot24x7, hdOnly)
+                    applyChipFilter(
+                        selectedChip,
+                        applyFilters(channels, hideGeoBlocked, hideNot24x7, hdOnly),
+                        favourites
+                    )
                 )
             }
 
             if (channels.isNotEmpty() && visible.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = if (searchQuery.isBlank()) "No channels match your filters"
-                        else "No channels match",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "No channels match",
+                        color = PaletteTextSecondary
                     )
                 }
             } else {
-                val grouped = remember(visible, favourites, recents) {
-                    withRecentsGroup(
-                        withFavouritesGroupFirst(groupChannels(visible), favourites),
-                        recents
-                    )
+                val grouped = remember(visible, favourites, recents, deadChannels, selectedChip) {
+                    when (selectedChip) {
+                        CHIP_FAVOURITES -> {
+                            val pinned = visible
+                                .filter { it.streamUrl in favourites }
+                                .distinctBy { it.streamUrl }
+                            if (pinned.isEmpty()) emptyList()
+                            else listOf(CHIP_FAVOURITES to pinned)
+                        }
+                        else -> {
+                            val groups = groupChannels(visible).map { (name, list) ->
+                                name to sortOfflineLast(list, deadChannels)
+                            }
+                            if (selectedChip == CHIP_ALL) {
+                                withRecentsGroup(
+                                    withFavouritesGroupFirst(groups, favourites),
+                                    recents.filterNot { it in deadChannels }
+                                )
+                            } else {
+                                groups
+                            }
+                        }
+                    }
                 }
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
                     onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    if (gridLayout) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 110.dp),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
-                                // Index-based keys: same collision rationale as
-                                // the list below (a synthetic group name can
-                                // collide with a real category).
-                                item(
-                                    key = "hdr:$groupIndex",
-                                    span = { GridItemSpan(maxLineSpan) }
-                                ) {
-                                    GroupHeader(name = group, count = groupChannels.size)
-                                }
-                                gridItems(
-                                    items = groupChannels,
-                                    key = { channel -> "ch:$groupIndex|${channel.streamUrl}" }
-                                ) { channel ->
-                                    ChannelGridCell(
-                                        channel = channel,
-                                        showLogos = showLogos,
-                                        isPlaying = channel.streamUrl == playingUrl,
-                                        isFavourite = channel.streamUrl in favourites,
-                                        isDead = channel.streamUrl in deadChannels,
-                                        onToggleFavourite = { onToggleFavourite(channel) },
-                                        onClick = { onChannelSelected(channel) }
-                                    )
-                                }
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 110.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .navigationBarsPadding(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                    ) {
+                        grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
+                            // Index-based keys: a synthetic group name can
+                            // collide with a real category, and name keys
+                            // would then crash the grid.
+                            item(
+                                key = "hdr:$groupIndex",
+                                span = { GridItemSpan(maxLineSpan) }
+                            ) {
+                                GroupHeader(
+                                    name = group,
+                                    count = groupChannels.size,
+                                    showDivider = groupIndex > 0
+                                )
                             }
-                        }
-                    } else {
-                        LazyColumn {
-                            grouped.forEachIndexed { groupIndex, (group, groupChannels) ->
-                                // Index-based keys: the synthetic Favourites group could
-                                // share a name with a real category, and name-based keys
-                                // would then collide and crash the list.
-                                item(key = "hdr:$groupIndex") {
-                                    GroupHeader(name = group, count = groupChannels.size)
-                                }
-                                items(
-                                    items = groupChannels,
-                                    key = { channel -> "ch:$groupIndex|${channel.streamUrl}" }
-                                ) { channel ->
-                                    ChannelRow(
-                                        channel = channel,
-                                        showLogos = showLogos,
-                                        isFavourite = channel.streamUrl in favourites,
-                                        isDead = channel.streamUrl in deadChannels,
-                                        isPlaying = channel.streamUrl == playingUrl,
-                                        onToggleFavourite = { onToggleFavourite(channel) },
-                                        onClick = { onChannelSelected(channel) }
-                                    )
-                                    HorizontalDivider(
-                                        color = MaterialTheme.colorScheme.outline,
-                                        thickness = 0.5.dp
-                                    )
-                                }
+                            gridItems(
+                                items = groupChannels,
+                                key = { channel -> "ch:$groupIndex|${channel.streamUrl}" }
+                            ) { channel ->
+                                ChannelTile(
+                                    channel = channel,
+                                    showLogos = showLogos,
+                                    isPlaying = channel.streamUrl == playingUrl,
+                                    isFavourite = channel.streamUrl in favourites,
+                                    isOffline = channel.streamUrl in deadChannels,
+                                    onToggleFavourite = { onToggleFavourite(channel) },
+                                    onClick = { onChannelSelected(channel) }
+                                )
                             }
                         }
                     }
@@ -324,225 +360,150 @@ fun ChannelListScreen(
 }
 
 @Composable
-private fun GroupHeader(name: String, count: Int) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = name,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = count.toString(),
-            fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+private fun GroupHeader(name: String, count: Int, showDivider: Boolean) {
+    Column(Modifier.fillMaxWidth()) {
+        if (showDivider) {
+            HorizontalDivider(color = PaletteOutline, thickness = 1.dp)
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.labelMedium,
+                color = PaletteGold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = count.toString(),
+                fontSize = 12.sp,
+                color = PaletteTextSecondary
+            )
+        }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class) // FlowRow — stable or experimental depending on foundation version; opt-in covers both
+/**
+ * A channel tile: card background with a hairline outline border (2dp
+ * gold when this is the playing channel), the logo on a light backing
+ * square — ContentScale.Fit, never Crop, so dark and wide logos stay
+ * visible — or a gray letter tile when there's no logo, a 2-line
+ * centered label, an "Offline" label with 50% dimming for failed
+ * channels, and a 40dp favourite star at the tile's top-right.
+ */
 @Composable
-private fun ChannelRow(
+private fun ChannelTile(
     channel: M3uChannel,
     showLogos: Boolean,
-    isFavourite: Boolean,
-    isDead: Boolean,
     isPlaying: Boolean,
+    isFavourite: Boolean,
+    isOffline: Boolean,
     onToggleFavourite: () -> Unit,
     onClick: () -> Unit
 ) {
     val display = remember(channel.name) { parseDisplay(channel.name) }
-    // A channel that failed before is dimmed, so retapping a dead link is
-    // a deliberate choice, not a surprise. Still fully playable.
-    val deadAlpha = if (isDead) 0.55f else 1f
-    Row(
+    val contentAlpha = if (isOffline) 0.5f else 1f
+    val hasLogo = showLogos && !channel.logoUrl.isNullOrBlank()
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(PaletteCard)
+            .border(
+                width = if (isPlaying) 2.dp else 1.dp,
+                color = if (isPlaying) PaletteGold else PaletteOutline,
+                shape = RoundedCornerShape(12.dp)
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.alpha(deadAlpha)) {
-            ChannelAvatar(
-                logoUrl = channel.logoUrl,
-                showLogos = showLogos,
-                fallbackName = display.cleanName
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f).alpha(deadAlpha)) {
-            Text(
-                text = display.cleanName,
-                fontSize = 15.sp,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            if (isPlaying || display.quality != null || display.tags.isNotEmpty() || isDead) {
-                Spacer(Modifier.height(6.dp))
-                // FlowRow so several tags wrap on narrow phones instead of clipping.
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (isPlaying) Chip(text = "Playing", accent = true)
-                    display.quality?.let { Chip(text = it, accent = false) }
-                    display.tags.forEach { Chip(text = it, accent = true) }
-                    if (isDead) Chip(text = "May be dead", accent = false)
+        Column(
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth()
+                .align(Alignment.TopCenter),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (hasLogo) PaletteLogoBacking else PaletteSurface),
+                contentAlignment = Alignment.Center
+            ) {
+                if (hasLogo) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(channel.logoUrl)
+                            .size(112, 112)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(8.dp)
+                    )
+                } else {
+                    Text(
+                        text = display.cleanName.firstOrNull()?.uppercase() ?: "?",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = PaletteTextSecondary
+                    )
                 }
             }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = display.cleanName,
+                fontSize = 12.sp,
+                color = PaletteTextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.alpha(contentAlpha)
+            )
+            if (isOffline) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Offline",
+                    fontSize = 10.sp,
+                    color = PaletteOffline,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
-        IconButton(onClick = onToggleFavourite) {
+        IconButton(
+            onClick = onToggleFavourite,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(40.dp)
+        ) {
             Icon(
-                imageVector = TribalIcons.Star,
+                imageVector = if (isFavourite) TribalIcons.Star else TribalIcons.StarOutlined,
                 contentDescription = if (isFavourite) "Remove favourite" else "Add favourite",
-                tint = if (isFavourite) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant
+                tint = if (isFavourite) PaletteGold else PaletteTextSecondary,
+                modifier = Modifier.size(20.dp)
             )
         }
     }
 }
 
-/**
- * Grid mode cell: big centered avatar with a favourite star at the
- * top-start corner and a small accent dot at the top-end when this is
- * the playing channel, then a 2-line name underneath. Chips stay
- * list-only — the grid stays tiles.
- */
+/** Selected = gold fill with background text; unselected = card fill with outline border. */
 @Composable
-private fun ChannelGridCell(
-    channel: M3uChannel,
-    showLogos: Boolean,
-    isPlaying: Boolean,
-    isFavourite: Boolean,
-    isDead: Boolean,
-    onToggleFavourite: () -> Unit,
-    onClick: () -> Unit
-) {
-    val display = remember(channel.name) { parseDisplay(channel.name) }
-    val deadAlpha = if (isDead) 0.55f else 1f
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(Modifier.alpha(deadAlpha)) {
-            ChannelAvatar(
-                logoUrl = channel.logoUrl,
-                showLogos = showLogos,
-                fallbackName = display.cleanName,
-                size = 64.dp
-            )
-            if (isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                        .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                )
-            }
-            // Favourite star on the avatar's other top corner; a compact
-            // IconButton keeps the touch target small so the rest of the
-            // tile stays tap-to-play.
-            IconButton(
-                onClick = onToggleFavourite,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .size(28.dp)
-            ) {
-                Icon(
-                    imageVector = TribalIcons.Star,
-                    contentDescription = if (isFavourite) "Remove favourite" else "Add favourite",
-                    tint = if (isFavourite) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = display.cleanName,
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.alpha(deadAlpha)
-        )
-    }
-}
-
-@Composable
-private fun LetterAvatar(name: String, size: Dp = 40.dp) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(RoundedCornerShape(10.dp))
-            .background(TribalAccentTint),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = name.firstOrNull()?.uppercase() ?: "?",
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = TribalAccentTintText
-        )
-    }
-}
-
-/**
- * Square avatar slot (40dp in the list, 64dp in the grid): the letter
- * avatar is always the base layer, so it shows while a logo loads, and
- * remains if the load fails. The logo is drawn on top only when logos
- * are enabled and the channel has one. The request is sized at 2x the
- * slot — crisp on 2x screens, tiny on the wire.
- */
-@Composable
-private fun ChannelAvatar(
-    logoUrl: String?,
-    showLogos: Boolean,
-    fallbackName: String,
-    size: Dp = 40.dp
-) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(RoundedCornerShape(10.dp))
-    ) {
-        LetterAvatar(fallbackName, size)
-        if (showLogos && !logoUrl.isNullOrBlank()) {
-            val requestPx = (size.value * 2).toInt()
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(logoUrl)
-                    .size(requestPx, requestPx)
-                    .build(),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-    }
-}
-
-@Composable
-private fun Chip(text: String, accent: Boolean) {
+private fun FilterChipView(label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
     Text(
-        text = text,
-        fontSize = 11.sp,
-        color = if (accent) TribalAccentTintText else MaterialTheme.colorScheme.onSurfaceVariant,
+        text = label,
+        fontSize = 13.sp,
+        color = if (selected) PaletteBackground else PaletteTextSecondary,
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (accent) TribalAccentTint else TribalChipBackground)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .clip(shape)
+            .background(if (selected) PaletteGold else PaletteCard)
+            .border(1.dp, if (selected) PaletteGold else PaletteOutline, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp)
     )
 }

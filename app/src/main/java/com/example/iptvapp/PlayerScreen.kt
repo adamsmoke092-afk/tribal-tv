@@ -7,6 +7,8 @@ import android.util.Rational
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -38,42 +41,39 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 
 /**
- * Playback screen (SPEC §2.4). Wraps Media3's PlayerView via AndroidView —
- * Compose has no native video-surface composable, so this is the standard
- * bridge for it.
- *
- * Also surfaces failure states PlayerFactory's retry logic doesn't cover
- * (SPEC §4, risks #4 and #5): a dead/geo-blocked channel would otherwise
- * leave the user staring at an infinite spinner with no signal that
- * something's actually wrong, or silently fail on any error code besides
- * the three network ones PlayerFactory retries.
- *
- * UI: dark cinema (redesign step 3) + feature batch: the manifest's
- * configChanges keeps the activity alive across rotation, so playback and
- * the selected channel survive; the header bar hides in landscape so the
- * video fills the screen; the error card gained a Retry button. Picture-
- * in-picture: a header (or landscape overlay) button enters a floating
- * window; all chrome hides while in it.
- * Playback listeners, BackHandler and the buffering timer keep their
- * behavior; the listeners now also report success/failure so channels
- * that fail get remembered and dimmed in the list.
+ * Playback screen, strict black/gold edition. Wraps Media3's PlayerView
+ * via AndroidView (no native Compose video surface). The top bar carries
+ * the channel name with live resolution/bitrate info, prev/next channel
+ * zapping through the list the user came from, the PiP trigger, and
+ * quick toggles for Data saver / Audio only that apply instantly and
+ * share the persisted settings with the dialog. Failures the retry
+ * logic can't cover surface in a card (Surface color, Offline-colored
+ * message, gold "Back to channels"). Chrome hides in landscape and in
+ * PiP — zapping and PiP stay as small overlays in landscape.
  */
 @Composable
 fun PlayerScreen(
     player: Player,
     channelName: String,
     isInPip: Boolean,
+    dataSaver: Boolean,
+    audioOnly: Boolean,
+    onToggleDataSaver: () -> Unit,
+    onToggleAudioOnly: () -> Unit,
+    onPrevChannel: () -> Unit,
+    onNextChannel: () -> Unit,
     onPlaybackFailed: () -> Unit,
     onPlaybackSucceeded: () -> Unit,
     onBack: () -> Unit
@@ -88,6 +88,7 @@ fun PlayerScreen(
             }
         )
     }
+    var videoInfo by remember { mutableStateOf(videoInfoText(player)) }
     val display = remember(channelName) { parseDisplay(channelName) }
 
     // Landscape = video fills the screen; the PlayerView controller and
@@ -111,7 +112,7 @@ fun PlayerScreen(
 
     // Without this, the system/gesture back button exits the whole app
     // instead of returning to the channel list — there's no navigation
-    // library or back stack to intercept it otherwise (SPEC §4 audit).
+    // library or back stack to intercept it otherwise.
     BackHandler(onBack = onBack)
 
     DisposableEffect(player) {
@@ -120,6 +121,7 @@ fun PlayerScreen(
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
                     statusMessage = null
+                    videoInfo = videoInfoText(player)
                     // A "dead" channel that plays again is forgiven — the
                     // dead-channel memory self-heals.
                     onPlaybackSucceeded()
@@ -128,11 +130,19 @@ fun PlayerScreen(
 
             override fun onPlayerError(error: PlaybackException) {
                 // Anything reaching here that PlayerFactory didn't already
-                // recover from (e.g. a genuinely dead or geo-blocked stream,
-                // or an unsupported format) gets a visible message instead
+                // recover from (a genuinely dead or geo-blocked stream, or
+                // an unsupported format) gets a visible message instead
                 // of a silently stuck screen.
                 statusMessage = "This channel isn't playable right now (${error.errorCodeName})."
                 onPlaybackFailed()
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoInfo = videoInfoText(player)
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                videoInfo = videoInfoText(player)
             }
         }
         player.addListener(listener)
@@ -147,7 +157,11 @@ fun PlayerScreen(
             delay(20_000)
             if (isBuffering) {
                 statusMessage = "Still buffering after 20s — this channel may be dead, " +
-                    "geo-blocked, or too high-bitrate for your current connection."
+                    "geo-blocked, or too-high-bitrate for your current connection."
+                // A stream that never came up counts as a failure for the
+                // dead-channel memory too — the list dims it and skips it
+                // in Recently watched until the failure expires.
+                onPlaybackFailed()
             }
         }
     }
@@ -155,43 +169,67 @@ fun PlayerScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(PaletteBackground)
     ) {
         if (!isLandscape && !isInPip) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = TribalIcons.Back,
-                        contentDescription = "Back",
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-                Column {
-                    Text(
-                        text = display.cleanName,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Chip("Live", accent = true)
-                        display.quality?.let { Chip(it, accent = false) }
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = TribalIcons.Back,
+                            contentDescription = "Back",
+                            tint = PaletteTextPrimary
+                        )
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = display.cleanName,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = PaletteTextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = videoInfo,
+                            fontSize = 11.sp,
+                            color = PaletteTextSecondary
+                        )
+                    }
+                    IconButton(onClick = onPrevChannel) {
+                        Icon(
+                            imageVector = TribalIcons.Prev,
+                            contentDescription = "Previous channel",
+                            tint = PaletteTextPrimary
+                        )
+                    }
+                    IconButton(onClick = onNextChannel) {
+                        Icon(
+                            imageVector = TribalIcons.Next,
+                            contentDescription = "Next channel",
+                            tint = PaletteTextPrimary
+                        )
+                    }
+                    TextButton(onClick = enterPip) {
+                        Text("PiP", color = PaletteTextPrimary)
                     }
                 }
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = enterPip) {
-                    Text("PiP", color = MaterialTheme.colorScheme.onBackground)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QuickToggle(label = "Data saver", active = dataSaver, onToggle = onToggleDataSaver)
+                    QuickToggle(label = "Audio only", active = audioOnly, onToggle = onToggleAudioOnly)
                 }
+                HorizontalDivider(color = PaletteOutline, thickness = 1.dp)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
         }
 
         Box(Modifier.fillMaxSize()) {
@@ -205,14 +243,31 @@ fun PlayerScreen(
                 }
             )
 
-            // Landscape hides the header, so the PiP trigger lives as a
-            // small overlay on the video itself.
+            // Landscape hides the header, so zapping and the PiP trigger
+            // live as a small overlay on the video itself.
             if (isLandscape && !isInPip) {
-                TextButton(
-                    onClick = enterPip,
-                    modifier = Modifier.align(Alignment.TopEnd)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
                 ) {
-                    Text("PiP", color = MaterialTheme.colorScheme.onBackground)
+                    IconButton(onClick = onPrevChannel) {
+                        Icon(
+                            imageVector = TribalIcons.Prev,
+                            contentDescription = "Previous channel",
+                            tint = PaletteTextPrimary
+                        )
+                    }
+                    IconButton(onClick = onNextChannel) {
+                        Icon(
+                            imageVector = TribalIcons.Next,
+                            contentDescription = "Next channel",
+                            tint = PaletteTextPrimary
+                        )
+                    }
+                    TextButton(onClick = enterPip) {
+                        Text("PiP", color = PaletteTextPrimary)
+                    }
                 }
             }
 
@@ -223,34 +278,34 @@ fun PlayerScreen(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .padding(16.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surface)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(PaletteSurface)
                         .padding(16.dp)
                 ) {
-                    Text(message, color = MaterialTheme.colorScheme.onSurface)
+                    Text(message, color = PaletteOffline)
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
+                        Button(
                             onClick = onBack,
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.onSurface
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PaletteGold,
+                                contentColor = PaletteBackground
                             ),
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("Back to channels")
                         }
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 statusMessage = null
                                 player.prepare()
                                 player.playWhenReady = true
                             },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, PaletteOutline),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = PaletteTextPrimary
                             ),
                             modifier = Modifier.weight(1f)
                         ) {
@@ -263,15 +318,33 @@ fun PlayerScreen(
     }
 }
 
+/**
+ * Resolution + bitrate line from the currently selected video track;
+ * "audio only" when there is no video track (video disabled, or a
+ * pure-audio stream).
+ */
+private fun videoInfoText(player: Player): String {
+    val format = player.videoFormat
+    return when {
+        format == null || format.height <= 0 -> "audio only"
+        format.bitrate > 0 -> "${format.height}p · ${format.bitrate / 1000} Kbps"
+        else -> "${format.height}p"
+    }
+}
+
+/** Compact instant-apply toggle chip: gold when on, card + outline when off. */
 @Composable
-private fun Chip(text: String, accent: Boolean) {
+private fun QuickToggle(label: String, active: Boolean, onToggle: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
     Text(
-        text = text,
+        text = label,
         fontSize = 11.sp,
-        color = if (accent) TribalAccentTintText else MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (active) PaletteBackground else PaletteTextSecondary,
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (accent) TribalAccentTint else TribalChipBackground)
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .clip(shape)
+            .background(if (active) PaletteGold else PaletteCard)
+            .border(1.dp, if (active) PaletteGold else PaletteOutline, shape)
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 10.dp, vertical = 5.dp)
     )
 }

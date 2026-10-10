@@ -38,24 +38,24 @@ fun parseDisplay(name: String): ChannelDisplay {
 /**
  * iptv-org group-title is ';'-separated multi-category
  * ("Entertainment;Family;General") — the channel is listed under EACH.
- * Null, empty, or all-blank segments → "Ungrouped".
+ * Null, empty, or all-blank segments → "Other".
  */
 fun categoriesForGroupTitle(groupTitle: String?): List<String> =
     groupTitle.orEmpty()
         .split(';')
         .map { it.trim() }
         .filter { it.isNotEmpty() }
-        .ifEmpty { listOf("Ungrouped") }
+        .ifEmpty { listOf("Other") }
 
 /**
- * Groups channels by category; sorted alphabetically with "Ungrouped" last.
- * Returned as pairs so the screen can flatten into a single LazyColumn.
+ * Groups channels by category; sorted alphabetically with "Other" last.
+ * Returned as pairs so the screen can flatten into a single grid.
  */
 fun groupChannels(channels: List<M3uChannel>): List<Pair<String, List<M3uChannel>>> =
     channels
         .flatMap { channel -> categoriesForGroupTitle(channel.groupTitle).map { it to channel } }
         .groupBy({ it.first }, { it.second })
-        .toSortedMap(compareBy<String> { it == "Ungrouped" }.thenBy { it })
+        .toSortedMap(compareBy<String> { it == "Other" }.thenBy { it })
         .toList()
 
 /**
@@ -126,3 +126,32 @@ fun formatLastRefreshText(nowMs: Long, refreshedMs: Long): String? {
         else -> "Updated ${minutes / (24 * 60)}d ago"
     }
 }
+
+/** Chip labels for the horizontally scrolling filter row. */
+const val CHIP_ALL = "All"
+const val CHIP_FAVOURITES = "Favorites"
+
+/**
+ * Applies the selected filter chip: All keeps everything, Favorites keeps
+ * only favourited channels, anything else is a group-name match (a
+ * channel can belong to several groups).
+ */
+fun applyChipFilter(
+    chip: String,
+    channels: List<M3uChannel>,
+    favourites: Set<String>
+): List<M3uChannel> = when (chip) {
+    CHIP_ALL -> channels
+    CHIP_FAVOURITES -> channels.filter { it.streamUrl in favourites }
+    else -> channels.filter { chip in categoriesForGroupTitle(it.groupTitle) }
+}
+
+/**
+ * Stable partition: offline channels sink to the end of their group,
+ * keeping the original relative order within each half.
+ */
+fun sortOfflineLast(channels: List<M3uChannel>, dead: Set<String>): List<M3uChannel> =
+    channels.filter { it.streamUrl !in dead } + channels.filter { it.streamUrl in dead }
+
+/** A cache older than this gets a silent background refresh on launch. */
+const val STALE_PLAYLIST_MS: Long = 24 * 60 * 60 * 1000L
