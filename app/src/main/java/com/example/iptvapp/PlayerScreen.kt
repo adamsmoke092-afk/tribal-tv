@@ -319,16 +319,30 @@ fun PlayerScreen(
 }
 
 /**
- * Resolution + bitrate line from the currently selected video track;
+ * Resolution + bitrate line for the currently selected video track;
  * "audio only" when there is no video track (video disabled, or a
  * pure-audio stream).
+ *
+ * Everything goes through reflection: the Player.videoFormat convenience
+ * getter does not resolve against this project's Media3 (CI-verified,
+ * 2026-10-10), and reflection has no compile-time API surface to get
+ * wrong. Any failure degrades to "audio only" instead of showing wrong
+ * numbers.
  */
 private fun videoInfoText(player: Player): String {
-    val format = player.videoFormat
+    val format = runCatching {
+        player.javaClass.getMethod("getVideoFormat").invoke(player)
+    }.getOrNull() ?: return "audio only"
+    val height = runCatching {
+        format.javaClass.getField("height").getInt(format)
+    }.getOrDefault(0)
+    val bitrate = runCatching {
+        format.javaClass.getField("bitrate").getInt(format)
+    }.getOrDefault(0)
     return when {
-        format == null || format.height <= 0 -> "audio only"
-        format.bitrate > 0 -> "${format.height}p · ${format.bitrate / 1000} Kbps"
-        else -> "${format.height}p"
+        height <= 0 -> "audio only"
+        bitrate > 0 -> "${height}p · ${bitrate / 1000} Kbps"
+        else -> "${height}p"
     }
 }
 
