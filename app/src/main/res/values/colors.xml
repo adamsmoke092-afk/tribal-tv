@@ -5,7 +5,4 @@
 
     <!-- PlayerView's scrubber/progress follows the platform accent. -->
     <color name="gold_accent">#D4AF37</color>
-
-    <!-- Launcher icon: gold background, white retro-TV foreground. -->
-    <color name="ic_launcher_background">#D4AF37</color>
 </resources>

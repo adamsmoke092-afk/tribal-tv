@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher icon background: strict black, so the gold art reads. -->
+    <color name="ic_launcher_background">#0A0A0A</color>
+</resources>
