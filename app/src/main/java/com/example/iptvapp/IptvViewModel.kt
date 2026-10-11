@@ -126,14 +126,14 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun setChannels(list: List<M3uChannel>) {
+    private fun updateChannels(list: List<M3uChannel>) {
         channels = list
         lastRefreshText = formatLastRefreshText(System.currentTimeMillis(), settings.lastRefreshMs())
     }
 
     private suspend fun loadInitialChannels() {
         try {
-            setChannels(repository.getChannels(playlistUrl))
+            updateChannels(repository.getChannels(playlistUrl))
         } catch (e: Exception) {
             loadError = "Failed to load playlist: ${e.message}"
         }
@@ -141,7 +141,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         // serving; a failure keeps the cache and only shows the banner.
         if (System.currentTimeMillis() - settings.lastRefreshMs() > STALE_PLAYLIST_MS) {
             try {
-                setChannels(repository.refreshChannels(playlistUrl))
+                updateChannels(repository.refreshChannels(playlistUrl))
                 loadError = null
             } catch (e: Exception) {
                 loadError = "Background refresh failed — showing cached channels"
@@ -215,7 +215,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isRefreshing = true
             try {
-                setChannels(repository.refreshChannels(playlistUrl))
+                updateChannels(repository.refreshChannels(playlistUrl))
                 loadError = null
             } catch (e: Exception) {
                 loadError = "Refresh failed: ${e.message}"
@@ -282,7 +282,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     playlistStore.setActive(draft.selectedPlaylistId)
                 }
-                setChannels(loaded)
+                updateChannels(loaded)
                 playlistUrl = targetUrl
             } else {
                 draft.renamedPlaylists.forEach { (id, name) -> playlistStore.rename(id, name) }
