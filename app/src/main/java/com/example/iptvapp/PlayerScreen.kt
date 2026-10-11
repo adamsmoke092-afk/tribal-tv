@@ -70,6 +70,7 @@ fun PlayerScreen(
     isInPip: Boolean,
     dataSaver: Boolean,
     audioOnly: Boolean,
+    nowNext: com.example.iptvapp.epg.NowNext?,
     onToggleDataSaver: () -> Unit,
     onToggleAudioOnly: () -> Unit,
     onPrevChannel: () -> Unit,
@@ -228,6 +229,7 @@ fun PlayerScreen(
                     QuickToggle(label = "Data saver", active = dataSaver, onToggle = onToggleDataSaver)
                     QuickToggle(label = "Audio only", active = audioOnly, onToggle = onToggleAudioOnly)
                 }
+                NowNextLine(nowNext)
                 HorizontalDivider(color = PaletteOutline, thickness = 1.dp)
             }
         }
@@ -361,4 +363,37 @@ private fun QuickToggle(label: String, active: Boolean, onToggle: () -> Unit) {
             .clickable(onClick = onToggle)
             .padding(horizontal = 10.dp, vertical = 5.dp)
     )
+}
+
+/**
+ * "Now / Next" line from the EPG. Renders nothing when there's no guide
+ * data (EPG off, or the channel isn't in the guide), so the player is
+ * unchanged for anyone not using EPG.
+ */
+@Composable
+private fun NowNextLine(nowNext: com.example.iptvapp.epg.NowNext?) {
+    val current = nowNext?.current ?: return
+    val next = nowNext.next
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+    ) {
+        Text(
+            text = "NOW  ${current.title}",
+            fontSize = 12.sp,
+            color = PaletteTextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (next != null) {
+            Text(
+                text = "NEXT  ${next.title}",
+                fontSize = 11.sp,
+                color = PaletteTextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
 }

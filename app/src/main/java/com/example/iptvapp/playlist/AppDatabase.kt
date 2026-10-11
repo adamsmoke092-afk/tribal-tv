@@ -5,15 +5,24 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.example.iptvapp.epg.EpgDao
+import com.example.iptvapp.epg.EpgProgramme
 
-// version 2: added ChannelEntity.headers (#EXTVLCOPT HTTP headers). No manual
-// migration needed — the table is a re-fetchable network cache, so
-// fallbackToDestructiveMigration rebuilds it from the next playlist fetch.
-@Database(entities = [ChannelEntity::class], version = 2, exportSchema = false)
+// version 2: added ChannelEntity.headers (#EXTVLCOPT HTTP headers).
+// version 3: added the EpgProgramme (programmes) table for XMLTV EPG.
+// No manual migrations — both tables are re-fetchable network caches, so
+// fallbackToDestructiveMigration rebuilds them from the next fetch.
+@Database(
+    entities = [ChannelEntity::class, EpgProgramme::class],
+    version = 3,
+    exportSchema = false
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun channelDao(): ChannelDao
+
+    abstract fun epgDao(): EpgDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

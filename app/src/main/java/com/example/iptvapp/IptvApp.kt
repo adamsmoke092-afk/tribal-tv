@@ -77,6 +77,7 @@ fun IptvApp(
                 initialResumeOnLaunch = vm.resumeOnLaunch,
                 initialDataSaver = vm.dataSaver,
                 initialAudioOnly = vm.audioOnly,
+                initialEpgUrl = vm.epgUrl,
                 onDismiss = { vm.closeSettings() },
                 onSave = { draft -> vm.saveSettings(player, draft) }
             )
@@ -88,6 +89,7 @@ fun IptvApp(
             isInPip = isInPip,
             dataSaver = vm.dataSaver,
             audioOnly = vm.audioOnly,
+            nowNext = vm.nowNext,
             onToggleDataSaver = { vm.toggleDataSaver(player) },
             onToggleAudioOnly = { vm.toggleAudioOnly(player) },
             onPrevChannel = { vm.moveChannel(player, current, -1) },

@@ -38,5 +38,11 @@ Built entirely via GitHub Actions — the dev device can't run Gradle.
   inline "not playable" message on the player screen — by design, not a bug.
 - First launch fetches the playlist over the network; later launches serve
   from the Room cache until you hit the refresh button.
-- Rotating the device returns to the channel list (player state isn't
-  retained across activity recreation yet — fine for v0.1).
+- App state lives in a ViewModel, so rotation and other activity
+  recreations keep you where you were (the player keeps playing either
+  way — it lives in PlaybackService).
+- Streams can carry `#EXTVLCOPT` HTTP headers (user-agent/referrer/origin);
+  the app parses them and sends them with every request for that stream.
+- Optional EPG: set an XMLTV guide URL (.xml or .xml.gz) in Settings to
+  see NOW/NEXT on the player. Off by default; the guide is scoped to your
+  playlist's `tvg-id`s and a 48h window to stay light.

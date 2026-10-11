@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
+import com.example.iptvapp.epg.EpgRepository
+import com.example.iptvapp.epg.NowNext
 import com.example.iptvapp.player.PlayerFactory
 import com.example.iptvapp.playlist.AppDatabase
 import com.example.iptvapp.playlist.M3uChannel
@@ -14,6 +16,9 @@ import com.example.iptvapp.playlist.PlaylistRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+// A cached EPG older than this gets a background refresh on launch.
+private const val STALE_EPG_MS: Long = 6 * 60 * 60 * 1000L
 
 /**
  * Owns all app data + screen state so it survives Activity recreation
@@ -37,6 +42,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     private lateinit var recentsStore: RecentsStore
     private lateinit var deadStore: DeadChannelStore
     private lateinit var repository: PlaylistRepository
+    private lateinit var epgRepository: EpgRepository
 
     // True once stores are built and initial settings/user data are loaded.
     // The UI shows a spinner until then.
@@ -85,6 +91,12 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var lastRefreshText by mutableStateOf<String?>(null)
         private set
+    var epgUrl by mutableStateOf("")
+        private set
+    // Now/next for the currently selected channel; null when EPG is off or
+    // the channel has no guide data.
+    var nowNext by mutableStateOf<NowNext?>(null)
+        private set
 
     // Guards so a refresh (which re-emits channels) can't re-trigger the
     // once-per-session resume/attach.
@@ -95,10 +107,12 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.IO) {
                 val app = getApplication<Application>()
                 settings = SettingsStore(app)
+                val db = AppDatabase.getInstance(app)
                 repository = PlaylistRepository(
-                    AppDatabase.getInstance(app).channelDao(),
+                    db.channelDao(),
                     onRefreshed = { settings.setLastRefreshMs(System.currentTimeMillis()) }
                 )
+                epgRepository = EpgRepository(db.epgDao())
                 playlistStore = PlaylistStore(app)
                 favouritesStore = FavouritesStore(app)
                 recentsStore = RecentsStore(app)
@@ -120,9 +134,50 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             favourites = favouritesStore.favourites()
             recents = recentsStore.recents()
             deadChannels = deadStore.dead()
+            epgUrl = settings.epgUrl()
             ready = true
 
             loadInitialChannels()
+            maybeRefreshEpg()
+        }
+    }
+
+    /**
+     * Refreshes the EPG cache in the background when a guide URL is set and
+     * the cache is empty or stale. Silent: EPG is a nice-to-have, so a
+     * failure just leaves now/next blank rather than surfacing an error.
+     */
+    private fun maybeRefreshEpg() {
+        val url = epgUrl.trim()
+        if (url.isEmpty()) return
+        viewModelScope.launch {
+            val stale = System.currentTimeMillis() - settings.lastEpgRefreshMs() > STALE_EPG_MS
+            val hasData = runCatching { epgRepository.hasData() }.getOrDefault(false)
+            if (hasData && !stale) {
+                refreshNowNext()
+                return@launch
+            }
+            try {
+                val channelIds = channels.mapNotNull { it.tvgId?.takeIf { id -> id.isNotBlank() } }.toSet()
+                if (channelIds.isEmpty()) return@launch
+                epgRepository.refresh(url, channelIds)
+                settings.setLastEpgRefreshMs(System.currentTimeMillis())
+                refreshNowNext()
+            } catch (e: Exception) {
+                // EPG is optional — keep any existing cache and stay quiet.
+            }
+        }
+    }
+
+    /** Recomputes now/next for the selected channel's tvg-id. */
+    private fun refreshNowNext() {
+        val tvgId = selectedChannel?.tvgId
+        if (tvgId.isNullOrBlank()) {
+            nowNext = null
+            return
+        }
+        viewModelScope.launch {
+            nowNext = runCatching { epgRepository.nowNext(tvgId) }.getOrNull()
         }
     }
 
@@ -166,6 +221,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             PlayerFactory.loadChannel(player, last.streamUrl, last.headers)
             selectedChannel = last
         }
+        if (selectedChannel != null) refreshNowNext()
     }
 
     fun updatePlayingUrl(mediaId: String?) {
@@ -177,6 +233,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         selectedChannel = channel
         recentsStore.add(channel.streamUrl)
         recents = recentsStore.recents()
+        refreshNowNext()
     }
 
     /** Channel zapping through the list the user came from, skipping dead ones. */
@@ -192,6 +249,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         selectedChannel = next
         recentsStore.add(next.streamUrl)
         recents = recentsStore.recents()
+        refreshNowNext()
     }
 
     fun toggleFavourite(channel: M3uChannel) {
@@ -208,6 +266,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     fun back(player: Player) {
         player.stop()
         selectedChannel = null
+        nowNext = null
     }
 
     fun refresh() {
@@ -314,6 +373,15 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 settings.setDataSaver(dataSaver)
                 settings.setAudioOnly(audioOnly)
                 applyPlaybackPreferences(player, dataSaver, audioOnly)
+            }
+            if (draft.epgUrl != epgUrl) {
+                epgUrl = draft.epgUrl
+                settings.setEpgUrl(draft.epgUrl)
+                // A new/cleared guide invalidates the cached freshness so the
+                // next launch refetches. Clearing it also blanks now/next.
+                settings.setLastEpgRefreshMs(0L)
+                nowNext = null
+                maybeRefreshEpg()
             }
             playlists = playlistStore.playlists()
             activePlaylistId = playlistStore.activePlaylist().id

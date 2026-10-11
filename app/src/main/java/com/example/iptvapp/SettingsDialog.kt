@@ -61,7 +61,8 @@ data class SettingsDraft(
     val hdOnly: Boolean,
     val resumeOnLaunch: Boolean,
     val dataSaver: Boolean,
-    val audioOnly: Boolean
+    val audioOnly: Boolean,
+    val epgUrl: String
 )
 
 /**
@@ -89,6 +90,7 @@ fun SettingsDialog(
     initialResumeOnLaunch: Boolean,
     initialDataSaver: Boolean,
     initialAudioOnly: Boolean,
+    initialEpgUrl: String,
     onDismiss: () -> Unit,
     onSave: suspend (SettingsDraft) -> String?
 ) {
@@ -110,6 +112,7 @@ fun SettingsDialog(
     var resumeOnLaunch by remember { mutableStateOf(initialResumeOnLaunch) }
     var dataSaver by remember { mutableStateOf(initialDataSaver) }
     var audioOnly by remember { mutableStateOf(initialAudioOnly) }
+    var epgUrl by remember { mutableStateOf(initialEpgUrl) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -351,6 +354,37 @@ fun SettingsDialog(
                     checked = hdOnly,
                     onCheckedChange = { hdOnly = it }
                 )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "TV Guide (EPG)",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = PaletteGold
+                )
+                Text(
+                    text = "Optional XMLTV guide URL (.xml or .xml.gz). Shows Now/Next on the " +
+                        "player for channels whose tvg-id matches the guide. Leave blank to turn off.",
+                    fontSize = 11.sp,
+                    color = PaletteTextSecondary
+                )
+                OutlinedTextField(
+                    value = epgUrl,
+                    onValueChange = {
+                        epgUrl = it
+                        errorText = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = {
+                        Text(text = "EPG URL", color = PaletteTextSecondary)
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = PaletteTextPrimary,
+                        unfocusedTextColor = PaletteTextPrimary,
+                        focusedBorderColor = PaletteGold,
+                        unfocusedBorderColor = PaletteOutline,
+                        cursorColor = PaletteGold
+                    )
+                )
                 if (isSaving) {
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -377,10 +411,13 @@ fun SettingsDialog(
                 onClick = {
                     val name = newName.trim()
                     val url = newUrl.trim()
+                    val epg = epgUrl.trim()
                     if (addingNew && name.isEmpty()) {
                         errorText = "Give the playlist a name."
                     } else if (addingNew && !isValidPlaylistUrl(url)) {
                         errorText = "Enter a valid http(s) playlist URL."
+                    } else if (epg.isNotEmpty() && !isValidPlaylistUrl(epg)) {
+                        errorText = "Enter a valid http(s) EPG URL, or leave it blank."
                     } else {
                         // Fold an unconfirmed rename into the save, so
                         // typing a name and hitting Save works without
@@ -406,7 +443,8 @@ fun SettingsDialog(
                                     hdOnly = hdOnly,
                                     resumeOnLaunch = resumeOnLaunch,
                                     dataSaver = dataSaver,
-                                    audioOnly = audioOnly
+                                    audioOnly = audioOnly,
+                                    epgUrl = epg
                                 )
                             )
                             isSaving = false

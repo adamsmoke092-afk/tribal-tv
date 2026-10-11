@@ -75,6 +75,24 @@ class SettingsStore(context: Context) {
         prefs.edit().putLong(KEY_LAST_REFRESH_MS, ms).apply()
     }
 
+    /**
+     * XMLTV EPG guide URL. Empty (the default) means EPG is off — no guide
+     * is fetched and the player shows no now/next. Opt-in so the common
+     * case downloads nothing extra.
+     */
+    fun epgUrl(): String = prefs.getString(KEY_EPG_URL, "") ?: ""
+
+    fun setEpgUrl(url: String) {
+        prefs.edit().putString(KEY_EPG_URL, url).apply()
+    }
+
+    /** Wall-clock ms of the last successful EPG fetch; 0 = never. */
+    fun lastEpgRefreshMs(): Long = prefs.getLong(KEY_LAST_EPG_REFRESH_MS, 0L)
+
+    fun setLastEpgRefreshMs(ms: Long) {
+        prefs.edit().putLong(KEY_LAST_EPG_REFRESH_MS, ms).apply()
+    }
+
     companion object {
         const val DEFAULT_PLAYLIST_URL = "https://iptv-org.github.io/iptv/countries/za.m3u"
 
@@ -88,6 +106,8 @@ class SettingsStore(context: Context) {
         private const val KEY_AUDIO_ONLY = "audio_only"
         private const val KEY_GRID_LAYOUT = "grid_layout"
         private const val KEY_LAST_REFRESH_MS = "last_refresh_ms"
+        private const val KEY_EPG_URL = "epg_url"
+        private const val KEY_LAST_EPG_REFRESH_MS = "last_epg_refresh_ms"
     }
 }
 
