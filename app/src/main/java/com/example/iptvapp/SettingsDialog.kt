@@ -361,8 +361,9 @@ fun SettingsDialog(
                     color = PaletteGold
                 )
                 Text(
-                    text = "Optional XMLTV guide URL (.xml or .xml.gz). Shows Now/Next on the " +
-                        "player for channels whose tvg-id matches the guide. Leave blank to turn off.",
+                    text = "Optional XMLTV guide URL (.xml or .xml.gz) — overrides the automatic " +
+                        "match. Blank = auto-match iptv-org country playlists; off for anything " +
+                        "else. Shows Now/Next on the player for channels whose tvg-id is in the guide.",
                     fontSize = 11.sp,
                     color = PaletteTextSecondary
                 )

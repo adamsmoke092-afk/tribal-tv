@@ -143,12 +143,12 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Refreshes the EPG cache in the background when a guide URL is set and
-     * the cache is empty or stale. Silent: EPG is a nice-to-have, so a
+     * Refreshes the EPG cache in the background when a guide URL is in play
+     * and the cache is empty or stale. Silent: EPG is a nice-to-have, so a
      * failure just leaves now/next blank rather than surfacing an error.
      */
     private fun maybeRefreshEpg() {
-        val url = epgUrl.trim()
+        val url = effectiveEpgUrl()
         if (url.isEmpty()) return
         viewModelScope.launch {
             val stale = System.currentTimeMillis() - settings.lastEpgRefreshMs() > STALE_EPG_MS
@@ -167,6 +167,17 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 // EPG is optional — keep any existing cache and stay quiet.
             }
         }
+    }
+
+    /**
+     * The guide URL actually in use: the manual setting when set, otherwise
+     * the auto-paired iptv-org country guide for the active playlist, and
+     * empty (EPG off) when neither applies.
+     */
+    private fun effectiveEpgUrl(): String {
+        val manual = settings.epgUrl().trim()
+        if (manual.isNotEmpty()) return manual
+        return autoEpgUrlForPlaylist(playlistUrl) ?: ""
     }
 
     /** Recomputes now/next for the selected channel's tvg-id. */
@@ -329,6 +340,10 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                     ?: throw IllegalStateException("Playlist not found")
                 else -> ""
             }
+            // Set when something about the guide changes (active playlist
+            // swapped, or the manual EPG URL edited) — refetched once at
+            // the end, so a Save that changes both doesn't fetch twice.
+            var epgNeedsRefetch = false
             if (targetUrl.isNotEmpty()) {
                 // Fetch/parse FIRST — throws before the cache or any store
                 // is touched, so a failure leaves everything as it was.
@@ -343,6 +358,13 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 updateChannels(loaded)
                 playlistUrl = targetUrl
+                // The EPG cache was scoped to the OLD playlist's tvg-ids —
+                // a playlist swap invalidates it even when the guide URL
+                // itself didn't change (auto-pair may resolve differently,
+                // and manual guides rarely cover a different playlist).
+                settings.setLastEpgRefreshMs(0L)
+                nowNext = null
+                epgNeedsRefetch = true
             } else {
                 draft.renamedPlaylists.forEach { (id, name) -> playlistStore.rename(id, name) }
                 draft.removedPlaylistIds.forEach { playlistStore.remove(it) }
@@ -381,8 +403,9 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 // next launch refetches. Clearing it also blanks now/next.
                 settings.setLastEpgRefreshMs(0L)
                 nowNext = null
-                maybeRefreshEpg()
+                epgNeedsRefetch = true
             }
+            if (epgNeedsRefetch) maybeRefreshEpg()
             playlists = playlistStore.playlists()
             activePlaylistId = playlistStore.activePlaylist().id
             null

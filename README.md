@@ -43,6 +43,8 @@ Built entirely via GitHub Actions — the dev device can't run Gradle.
   way — it lives in PlaybackService).
 - Streams can carry `#EXTVLCOPT` HTTP headers (user-agent/referrer/origin);
   the app parses them and sends them with every request for that stream.
-- Optional EPG: set an XMLTV guide URL (.xml or .xml.gz) in Settings to
-  see NOW/NEXT on the player. Off by default; the guide is scoped to your
-  playlist's `tvg-id`s and a 48h window to stay light.
+- EPG: NOW/NEXT on the player. iptv-org country playlists auto-pair with
+  their per-country XMLTV guide (`uk.m3u` → `uk.xml.gz`); a manual guide URL
+  in Settings overrides the auto-match. The guide is scoped to your
+  playlist's `tvg-id`s and a 48h window to stay light; channels not in the
+  guide just show nothing.

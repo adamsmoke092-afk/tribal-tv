@@ -127,3 +127,25 @@ fun isValidPlaylistUrl(url: String): Boolean {
         false
     }
 }
+
+/**
+ * Auto-pairs an iptv-org COUNTRY playlist with its matching per-country
+ * XMLTV guide (.../iptv/countries/uk.m3u -> .../epg/guides/uk.xml.gz) —
+ * the one pairing where playlist tvg-ids and guide channel ids are
+ * guaranteed to share a namespace. Any other URL returns null (no
+ * auto-guide); the user's manual EPG setting always overrides this.
+ *
+ * The country code is validated as plain ASCII letters so junk paths can
+ * never be spliced into the guide URL. Pure java.lang — JVM unit-testable.
+ */
+fun autoEpgUrlForPlaylist(playlistUrl: String): String? {
+    val trimmed = playlistUrl.trim()
+    if (!trimmed.startsWith(IPTV_ORG_PLAYLIST_PREFIX)) return null
+    val file = trimmed.removePrefix(IPTV_ORG_PLAYLIST_PREFIX).substringBefore('?')
+    if (!file.endsWith(".m3u")) return null
+    val code = file.removeSuffix(".m3u")
+    if (code.isEmpty() || !code.all { it.isLetter() && it.code < 128 }) return null
+    return "https://iptv-org.github.io/epg/guides/${code.lowercase()}.xml.gz"
+}
+
+private const val IPTV_ORG_PLAYLIST_PREFIX = "https://iptv-org.github.io/iptv/countries/"
