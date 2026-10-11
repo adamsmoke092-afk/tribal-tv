@@ -6,6 +6,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -58,13 +59,22 @@ object PlayerFactory {
             initialDelayMs = 1000L
         )
 
+        // Injects the active stream's #EXTVLCOPT headers (StreamHeaders.current)
+        // into EVERY request — the HLS playlist AND each segment — so servers
+        // that gate on User-Agent/Referer accept playback. Wraps the retrying
+        // factory so headers are present on both the initial open and retries.
+        val resolvingFactory = ResolvingDataSource.Factory(retryingFactory) { dataSpec ->
+            val headers = StreamHeaders.current
+            if (headers.isEmpty()) dataSpec else dataSpec.withAdditionalHeaders(headers)
+        }
+
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             // Public playlists mix HLS with progressive and other stream
             // types; DefaultMediaSourceFactory picks the right source per
             // MediaItem instead of forcing every URL through HLS. Everything
-            // still flows through the retrying data source.
-            .setMediaSourceFactory(DefaultMediaSourceFactory(retryingFactory))
+            // still flows through the retrying + header-resolving data source.
+            .setMediaSourceFactory(DefaultMediaSourceFactory(resolvingFactory))
             .setAudioAttributes(AudioAttributes.DEFAULT, /* handleAudioFocus= */ true)
             .build()
     }
@@ -73,7 +83,12 @@ object PlayerFactory {
      * Loads a channel and wires up recoverable-error handling: on a network
      * error, re-prepare instead of surfacing a hard failure (SPEC §2.3).
      */
-    fun loadChannel(player: Player, streamUrl: String) {
+    fun loadChannel(player: Player, streamUrl: String, headers: Map<String, String> = emptyMap()) {
+        // Activate this stream's required HTTP headers BEFORE prepare() so the
+        // very first request (playlist fetch) already carries them. The
+        // ResolvingDataSource reads StreamHeaders.current on every request.
+        StreamHeaders.current = headers
+
         // mediaId doubles as the stream URL so the UI can resync to
         // whatever the session is already playing after a reconnect.
         val mediaItem = MediaItem.Builder()

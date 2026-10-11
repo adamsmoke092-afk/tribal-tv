@@ -17,6 +17,16 @@ object M3uPlaylistParser {
     private val GROUP_TITLE_REGEX = Regex("""group-title="([^"]*)"""")
     private val TVG_ID_REGEX = Regex("""tvg-id="([^"]*)"""")
 
+    // Maps the #EXTVLCOPT option name (lowercase) to the canonical HTTP
+    // request header the stream server actually expects. Only the options
+    // that affect reachability are mapped; playback-only VLC options
+    // (deinterlace, etc.) are irrelevant to an HTTP fetch and ignored.
+    private val VLCOPT_HEADER_NAMES = mapOf(
+        "http-user-agent" to "User-Agent",
+        "http-referrer" to "Referer",
+        "http-origin" to "Origin"
+    )
+
     fun parse(playlistText: String): List<M3uChannel> {
         val lines = playlistText.lineSequence()
             .map { it.trim() }
@@ -28,6 +38,7 @@ object M3uPlaylistParser {
         var pendingGroup: String? = null
         var pendingTvgId: String? = null
         var pendingName: String? = null
+        var pendingHeaders = mutableMapOf<String, String>()
 
         for (line in lines) {
             when {
@@ -38,8 +49,22 @@ object M3uPlaylistParser {
                     pendingName = line.substringAfterLast(',').trim().ifEmpty { "Unknown channel" }
                 }
 
+                line.startsWith("#EXTVLCOPT") -> {
+                    // Form: #EXTVLCOPT:http-user-agent=Mozilla/5.0 ...
+                    // Only the first '=' splits option name from value; the
+                    // value itself may contain '='. Surrounding quotes (some
+                    // playlists wrap the UA) are stripped.
+                    val opt = line.substringAfter(':', "").trim()
+                    val name = opt.substringBefore('=', "").trim().lowercase()
+                    val rawValue = opt.substringAfter('=', "").trim().trim('"')
+                    val headerName = VLCOPT_HEADER_NAMES[name]
+                    if (headerName != null && rawValue.isNotEmpty()) {
+                        pendingHeaders[headerName] = rawValue
+                    }
+                }
+
                 line.startsWith("#") -> {
-                    // Other directives (#EXTM3U, #EXTGRP, #EXTVLCOPT, etc.) — ignored for now.
+                    // Other directives (#EXTM3U, #EXTGRP, etc.) — ignored for now.
                 }
 
                 else -> {
@@ -53,13 +78,15 @@ object M3uPlaylistParser {
                             streamUrl = line,
                             logoUrl = pendingLogo,
                             groupTitle = pendingGroup,
-                            tvgId = pendingTvgId
+                            tvgId = pendingTvgId,
+                            headers = pendingHeaders.toMap()
                         )
                     }
                     pendingLogo = null
                     pendingGroup = null
                     pendingTvgId = null
                     pendingName = null
+                    pendingHeaders = mutableMapOf()
                 }
             }
         }

@@ -18,7 +18,9 @@ data class ChannelEntity(
     val name: String,
     val logoUrl: String?,
     val groupTitle: String?,
-    val tvgId: String?
+    val tvgId: String?,
+    // Serialized via Converters; empty for the common no-headers case.
+    val headers: Map<String, String> = emptyMap()
 )
 
 fun M3uChannel.toEntity(): ChannelEntity = ChannelEntity(
@@ -26,7 +28,8 @@ fun M3uChannel.toEntity(): ChannelEntity = ChannelEntity(
     name = name,
     logoUrl = logoUrl,
     groupTitle = groupTitle,
-    tvgId = tvgId
+    tvgId = tvgId,
+    headers = headers
 )
 
 fun ChannelEntity.toDomain(): M3uChannel = M3uChannel(
@@ -34,5 +37,6 @@ fun ChannelEntity.toDomain(): M3uChannel = M3uChannel(
     streamUrl = streamUrl,
     logoUrl = logoUrl,
     groupTitle = groupTitle,
-    tvgId = tvgId
+    tvgId = tvgId,
+    headers = headers
 )

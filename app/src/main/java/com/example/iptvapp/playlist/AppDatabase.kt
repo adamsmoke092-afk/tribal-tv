@@ -4,8 +4,13 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 
-@Database(entities = [ChannelEntity::class], version = 1, exportSchema = false)
+// version 2: added ChannelEntity.headers (#EXTVLCOPT HTTP headers). No manual
+// migration needed — the table is a re-fetchable network cache, so
+// fallbackToDestructiveMigration rebuilds it from the next playlist fetch.
+@Database(entities = [ChannelEntity::class], version = 2, exportSchema = false)
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun channelDao(): ChannelDao

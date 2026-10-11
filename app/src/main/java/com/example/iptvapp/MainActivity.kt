@@ -13,6 +13,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -24,8 +25,6 @@ import androidx.core.content.ContextCompat
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import coil3.SingletonImageLoader
-import com.example.iptvapp.playlist.AppDatabase
-import com.example.iptvapp.playlist.PlaylistRepository
 import com.google.common.util.concurrent.ListenableFuture
 
 /**
@@ -48,12 +47,9 @@ private val BarScrimColor = 0xFF0A0A0A.toInt()
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var repository: PlaylistRepository
-    private lateinit var settings: SettingsStore
-    private lateinit var playlistStore: PlaylistStore
-    private lateinit var favouritesStore: FavouritesStore
-    private lateinit var recentsStore: RecentsStore
-    private lateinit var deadStore: DeadChannelStore
+    // Owns all app data + screen state; survives Activity recreation and
+    // builds its stores off the main thread (see IptvViewModel).
+    private val viewModel: IptvViewModel by viewModels()
 
     // Set from onPictureInPictureModeChanged; read in setContent so the
     // Compose tree recomposes when PiP mode changes.
@@ -100,35 +96,18 @@ class MainActivity : ComponentActivity() {
             // Singleton already configured on this process; reuse it.
         }
 
-        settings = SettingsStore(this)
-        repository = PlaylistRepository(
-            AppDatabase.getInstance(this).channelDao(),
-            onRefreshed = { settings.setLastRefreshMs(System.currentTimeMillis()) }
-        )
-        playlistStore = PlaylistStore(this)
-        playlistStore.ensureSeeded(settings.playlistUrl())
-        favouritesStore = FavouritesStore(this)
-        recentsStore = RecentsStore(this)
-        deadStore = DeadChannelStore(this)
-
         connectController()
 
         setContent {
             TribalTvTheme {
                 val controller = mediaController.value
-                if (controller == null) {
+                if (controller == null || !viewModel.ready) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     }
                 } else {
                     IptvApp(
-                        initialPlaylistUrl = playlistStore.activePlaylist().url,
-                        settings = settings,
-                        playlistStore = playlistStore,
-                        favouritesStore = favouritesStore,
-                        recentsStore = recentsStore,
-                        deadStore = deadStore,
-                        repository = repository,
+                        vm = viewModel,
                         player = controller,
                         isInPip = isInPip.value
                     )
