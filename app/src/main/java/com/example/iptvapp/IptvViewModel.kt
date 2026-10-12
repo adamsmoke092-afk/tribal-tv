@@ -143,13 +143,14 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Refreshes the EPG cache in the background when a guide URL is in play
-     * and the cache is empty or stale. Silent: EPG is a nice-to-have, so a
-     * failure just leaves now/next blank rather than surfacing an error.
+     * Refreshes the EPG cache in the background when at least one guide URL
+     * is in play and the cache is empty or stale. Silent: EPG is a
+     * nice-to-have, so a failure just leaves now/next blank rather than
+     * surfacing an error.
      */
     private fun maybeRefreshEpg() {
-        val url = effectiveEpgUrl()
-        if (url.isEmpty()) return
+        val urls = effectiveEpgUrls()
+        if (urls.isEmpty()) return
         viewModelScope.launch {
             val stale = System.currentTimeMillis() - settings.lastEpgRefreshMs() > STALE_EPG_MS
             val hasData = runCatching { epgRepository.hasData() }.getOrDefault(false)
@@ -160,7 +161,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val channelIds = channels.mapNotNull { it.tvgId?.takeIf { id -> id.isNotBlank() } }.toSet()
                 if (channelIds.isEmpty()) return@launch
-                epgRepository.refresh(url, channelIds)
+                epgRepository.refresh(urls, channelIds)
                 settings.setLastEpgRefreshMs(System.currentTimeMillis())
                 refreshNowNext()
             } catch (e: Exception) {
@@ -170,14 +171,15 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * The guide URL actually in use: the manual setting when set, otherwise
-     * the auto-paired iptv-org country guide for the active playlist, and
-     * empty (EPG off) when neither applies.
+     * The guide URLs actually in use: the manual setting when set (may be
+     * several, comma-separated — merged for mixed/category playlists),
+     * otherwise the auto-paired iptv-org country guide for the active
+     * playlist, and empty (EPG off) when neither applies.
      */
-    private fun effectiveEpgUrl(): String {
-        val manual = settings.epgUrl().trim()
+    private fun effectiveEpgUrls(): List<String> {
+        val manual = parseEpgUrls(settings.epgUrl())
         if (manual.isNotEmpty()) return manual
-        return autoEpgUrlForPlaylist(playlistUrl) ?: ""
+        return listOfNotNull(autoEpgUrlForPlaylist(playlistUrl))
     }
 
     /** Recomputes now/next for the selected channel's tvg-id. */

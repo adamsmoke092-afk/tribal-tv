@@ -149,3 +149,12 @@ fun autoEpgUrlForPlaylist(playlistUrl: String): String? {
 }
 
 private const val IPTV_ORG_PLAYLIST_PREFIX = "https://iptv-org.github.io/iptv/countries/"
+
+/**
+ * Splits the EPG setting into individual guide URLs: comma-separated,
+ * trimmed, blanks dropped. The raw string stays stored as typed (one
+ * preference value); only consumers split it. "" -> empty list (EPG off
+ * via manual). Pure java.lang — JVM unit-testable.
+ */
+fun parseEpgUrls(raw: String): List<String> =
+    raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }

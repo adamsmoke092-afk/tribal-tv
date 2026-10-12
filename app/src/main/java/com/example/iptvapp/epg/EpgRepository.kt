@@ -8,14 +8,20 @@ import java.net.URL
 import java.util.zip.GZIPInputStream
 
 /**
- * Fetches an XMLTV guide, parses it (scoped to the given channel ids and a
- * time window), and caches the result in Room. All network/parse work runs
- * on Dispatchers.IO.
+ * Fetches XMLTV guides, parses them (scoped to the given channel ids and a
+ * time window), and caches the merged result in Room. All network/parse work
+ * runs on Dispatchers.IO.
  *
- * EPG is opt-in: an empty URL means the feature is off, and nothing here
- * runs. A failed fetch/parse throws so the caller can surface it without
- * wiping a previously-good cache (replaceAll only runs after a successful
- * parse that produced programmes).
+ * Multiple guide URLs (comma-separated in Settings) are supported so mixed
+ * playlists (e.g. iptv-org categories, which span countries) still get
+ * coverage: EVERY guide is fetched and parsed BEFORE the cache is replaced
+ * once atomically — a later guide never wipes an earlier one's data.
+ *
+ * Per-guide failure tolerance: a dead/garbage URL among several is skipped
+ * so one bad link can't decay the coverage the others provide. The channel
+ * filter bounds storage regardless of how many guides are merged. Only if
+ * every guide yields nothing for the playlist's channels does refresh()
+ * throw, leaving a previously-good cache untouched (same contract as before).
  */
 class EpgRepository(private val epgDao: EpgDao) {
 
@@ -28,24 +34,32 @@ class EpgRepository(private val epgDao: EpgDao) {
     }
 
     /**
-     * Downloads + parses + replaces the cache. [channelIds] is the set of
-     * tvg-ids in the active playlist; programmes for other channels are
-     * dropped. Returns the number of programmes cached.
+     * Downloads + parses + replaces the cache with the union of all guides.
+     * [channelIds] is the set of tvg-ids in the active playlist; programmes
+     * for other channels are dropped. The (channelId, startMs) primary key
+     * de-dupes a channel that appears in more than one merged guide.
+     * Returns the number of programmes cached; throws if no guide produced
+     * any programmes for the playlist.
      */
-    suspend fun refresh(epgUrl: String, channelIds: Set<String>): Int = withContext(Dispatchers.IO) {
+    suspend fun refresh(epgUrls: List<String>, channelIds: Set<String>): Int = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val windowStart = now - WINDOW_PAST_MS
         val windowEnd = now + WINDOW_FUTURE_MS
 
-        val programmes = openStream(epgUrl).use { stream ->
-            XmltvParser.parse(stream, channelIds, windowStart, windowEnd)
+        val merged = ArrayList<EpgProgramme>()
+        for (url in epgUrls) {
+            runCatching {
+                openStream(url).use { stream ->
+                    XmltvParser.parse(stream, channelIds, windowStart, windowEnd)
+                }
+            }.getOrNull()?.let { merged += it }
         }
-        // Don't wipe a good cache for an empty/garbage guide.
-        if (programmes.isEmpty()) {
-            throw IllegalStateException("No EPG programmes found for your channels in that guide")
+        // Don't wipe a good cache when no guide produced anything usable.
+        if (merged.isEmpty()) {
+            throw IllegalStateException("No EPG programmes found for your channels in those guides")
         }
-        epgDao.replaceAll(programmes)
-        programmes.size
+        epgDao.replaceAll(merged)
+        merged.size
     }
 
     /** Current + next programme for a channel's tvg-id, or null/empty when unknown. */

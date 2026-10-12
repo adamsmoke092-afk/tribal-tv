@@ -361,9 +361,10 @@ fun SettingsDialog(
                     color = PaletteGold
                 )
                 Text(
-                    text = "Optional XMLTV guide URL (.xml or .xml.gz) — overrides the automatic " +
-                        "match. Blank = auto-match iptv-org country playlists; off for anything " +
-                        "else. Shows Now/Next on the player for channels whose tvg-id is in the guide.",
+                    text = "Optional XMLTV guide URL (.xml or .xml.gz) — or several, " +
+                        "comma-separated, for mixed playlists. Overrides the automatic match. " +
+                        "Blank = auto-match iptv-org country playlists; off for anything else. " +
+                        "Shows Now/Next for channels whose tvg-id is in a guide.",
                     fontSize = 11.sp,
                     color = PaletteTextSecondary
                 )
@@ -417,8 +418,8 @@ fun SettingsDialog(
                         errorText = "Give the playlist a name."
                     } else if (addingNew && !isValidPlaylistUrl(url)) {
                         errorText = "Enter a valid http(s) playlist URL."
-                    } else if (epg.isNotEmpty() && !isValidPlaylistUrl(epg)) {
-                        errorText = "Enter a valid http(s) EPG URL, or leave it blank."
+                    } else if (parseEpgUrls(epg).any { !isValidPlaylistUrl(it) }) {
+                        errorText = "Every EPG URL must be a valid http(s) URL — comma-separate several, or leave blank."
                     } else {
                         // Fold an unconfirmed rename into the save, so
                         // typing a name and hitting Save works without

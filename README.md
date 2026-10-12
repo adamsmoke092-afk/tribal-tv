@@ -45,6 +45,7 @@ Built entirely via GitHub Actions — the dev device can't run Gradle.
   the app parses them and sends them with every request for that stream.
 - EPG: NOW/NEXT on the player. iptv-org country playlists auto-pair with
   their per-country XMLTV guide (`uk.m3u` → `uk.xml.gz`); a manual guide URL
-  in Settings overrides the auto-match. The guide is scoped to your
-  playlist's `tvg-id`s and a 48h window to stay light; channels not in the
-  guide just show nothing.
+  in Settings overrides the auto-match — several comma-separated URLs get
+  fetched and merged, so mixed playlists (e.g. iptv-org categories) can
+  combine country guides. The cache is scoped to your playlist's `tvg-id`s
+  and a 48h window to stay light; channels not in any guide show nothing.
