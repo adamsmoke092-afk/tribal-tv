@@ -19,9 +19,28 @@ import androidx.media3.datasource.HttpDataSource
  *
  * Every error code referenced here is verified to exist in
  * androidx.media3.common.PlaybackException for Media3 1.4.1.
+ *
+ * Testability: the mapping is pure — it depends only on the error code, the
+ * cause, and the code's display name. The [PlaybackException] entry point is a
+ * thin adapter, so unit tests can exercise the real mapping without building a
+ * PlaybackException. (Its constructor reads android.os.SystemClock through
+ * Media3's Clock, which a plain JVM unit test cannot call — the Android stub
+ * throws.)
  */
-fun playbackErrorMessage(error: PlaybackException): String {
-    return when (error.errorCode) {
+fun playbackErrorMessage(error: PlaybackException): String =
+    playbackErrorMessage(
+        errorCode = error.errorCode,
+        cause = error.cause,
+        errorCodeName = error.errorCodeName
+    )
+
+/** Pure mapping from a playback failure's parts to user-facing text. */
+internal fun playbackErrorMessage(
+    errorCode: Int,
+    cause: Throwable?,
+    errorCodeName: String
+): String {
+    return when (errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
             "Can't connect to the stream — check your network or VPN connection."
 
@@ -30,7 +49,7 @@ fun playbackErrorMessage(error: PlaybackException): String {
             "Connection timed out — the stream or your network may be temporarily unavailable."
 
         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-            httpStatusMessage(error)
+            httpStatusMessageFor(httpStatusCode(cause))
 
         PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
             "The stream file isn't available at this address."
@@ -70,27 +89,23 @@ fun playbackErrorMessage(error: PlaybackException): String {
             "The live stream fell too far behind — retrying should rejoin it."
 
         else -> buildString {
-            append("Playback failed: ${error.errorCodeName}.")
-            val detail = sanitisedCauseMessage(error)
+            append("Playback failed: $errorCodeName.")
+            val detail = sanitisedCauseMessage(cause)
             if (detail.isNotBlank()) append(' ').append(detail)
         }
     }
 }
 
-/** Maps an HTTP-status failure (Media3's ERROR_CODE_IO_BAD_HTTP_STATUS, whose
- * cause is an HttpDataSource.InvalidResponseCodeException) to clear copy. */
-private fun httpStatusMessage(error: PlaybackException): String {
-    val code = httpStatusCode(error.cause)
-    return when {
-        code == null -> "The stream returned an error the app couldn't interpret."
-        code == 401 -> "The provider requires authentication."
-        code == 403 -> "The provider blocked this stream (often a geoblock — retry from the right network)."
-        code == 404 -> "The stream was not found at this address."
-        code == 408 -> "The provider's request timed out (please retry)."
-        code == 429 -> "The provider is temporarily refusing requests (please retry)."
-        code in 500..599 -> "The provider's server returned an error (please retry)."
-        else -> "The stream responded with HTTP status $code."
-    }
+/** Copy for an HTTP status failure; null when the status wasn't available. */
+internal fun httpStatusMessageFor(code: Int?): String = when {
+    code == null -> "The stream returned an error the app couldn't interpret."
+    code == 401 -> "The provider requires authentication."
+    code == 403 -> "The provider blocked this stream (often a geoblock — retry from the right network)."
+    code == 404 -> "The stream was not found at this address."
+    code == 408 -> "The provider's request timed out (please retry)."
+    code == 429 -> "The provider is temporarily refusing requests (please retry)."
+    code in 500..599 -> "The provider's server returned an error (please retry)."
+    else -> "The stream responded with HTTP status $code."
 }
 
 /** Finds an InvalidResponseCodeException in the cause chain (it is sometimes
@@ -112,8 +127,8 @@ private val URL_REGEX = Regex("""https?://\S+""")
 /** The cause's message, with any URL redacted and length-capped — for the
  * unknown bucket only, so development diagnostics survive without ever
  * exposing a token-bearing stream URL. */
-private fun sanitisedCauseMessage(error: PlaybackException): String =
-    (error.cause?.message ?: "")
+private fun sanitisedCauseMessage(cause: Throwable?): String =
+    (cause?.message ?: "")
         .replace(URL_REGEX, "<url>")
         .replace(Regex("""\s+"""), " ")
         .trim()
