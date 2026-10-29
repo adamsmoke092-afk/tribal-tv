@@ -3,8 +3,8 @@
 Personal Android IPTV player. Loads an M3U playlist (default: South Africa
 channels from [iptv-org](https://github.com/iptv-org/iptv)), caches it in a
 Room database, and plays channels with a VPN-tunnel-tuned ExoPlayer — deep
-buffers, long HTTP timeouts, and a retrying data source with exponential
-backoff that fails fast on 4xx (geo-blocks) instead of pointlessly retrying.
+buffers and long HTTP timeouts, plus a bounded, classification-aware retry
+policy on the media source (see "Playback reliability" below).
 
 Built entirely via GitHub Actions — the dev device can't run Gradle.
 
@@ -49,3 +49,21 @@ Built entirely via GitHub Actions — the dev device can't run Gradle.
   fetched and merged, so mixed playlists (e.g. iptv-org categories) can
   combine country guides. The cache is scoped to your playlist's `tvg-id`s
   and a 48h window to stay light; channels not in any guide show nothing.
+
+## Playback reliability
+
+Retry behaviour is a custom `LoadErrorHandlingPolicy` wired through
+`DefaultMediaSourceFactory` (Media3's supported mechanism) — not a wrapper
+around the `DataSource`.
+
+- **Retried:** socket timeouts, connection refused/reset, DNS failures,
+  HTTP 5xx, and HTTP 408/429. Backoff is exponential and capped, for at most
+  three retries per load. A valid `Retry-After` on 429 is honoured (capped).
+- **Not retried (fail fast):** 401/403/404 and all other 4xx, plus parsing
+  and unsupported-format errors. Retrying a geoblock or a missing stream only
+  wastes time before the same failure.
+- Buffering for a long time shows a *warning*; it never marks a channel
+  "dead" on its own. Only a genuine playback error does, and a successful
+  playback forgives the channel.
+- `#EXTVLCOPT` headers are injected per request (playlist **and** segments)
+  by `ResolvingDataSource`, so retries never drop them.

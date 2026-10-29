@@ -50,6 +50,12 @@ produces a tight `error → prepare → error` loop → CPU/network/battery drai
 DataSource-layer backoff does **not** cover this player-level loop. Add a bounded retry
 count + delay (and reset it on successful playback).
 
+**✅ Resolved 2026-10-29.** Ordinary transient retries are now handled by a bounded
+`LoadErrorHandlingPolicy` (≤3 retries, capped exponential backoff). The remaining
+application-level re-prepare is capped at ONE per playback episode by `RecoveryBudget`,
+only fires while the failed channel is still the selected MediaItem, and resets on READY.
+The broad `ERROR_CODE_IO_UNSPECIFIED` check is gone.
+
 ### M2 — `RetryingDataSource.read()` retry can corrupt the stream
 `player/RetryingDataSource.kt` wraps **both** `open()` and `read()` in `withRetry`. Retrying
 `delegate.read()` after a *partial* read on a streaming HTTP source is unsafe — `read()`
@@ -58,6 +64,11 @@ bytes. `open()` retry is sound; `read()` retry is the risk. Prefer retrying only
 reopen the connection before retrying a read. Also note: `Thread.sleep` backoff (up to ~7s)
 on the loading thread **plus** 25s connect/read timeouts × 3 means one bad segment can stall
 for a long time.
+
+**✅ Resolved 2026-10-29.** `RetryingDataSource` is removed. Retries are delegated to
+Media3's `LoadErrorHandlingPolicy` (`BoundedLoadErrorHandlingPolicy`), which retries the
+*load* (never a raw `DataSource.read()`), uses ExoPlayer's own scheduling (no
+`Thread.sleep` on the loading thread), and fails fast on 4xx/parse errors.
 
 ### M3 — `allowBackup="true"` exposes playlist URLs / credentials
 `AndroidManifest.xml` sets `allowBackup="true"`. Playlist URLs live in plaintext

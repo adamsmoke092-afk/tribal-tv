@@ -60,7 +60,7 @@ fun IptvApp(
             recents = vm.recents,
             deadChannels = vm.deadChannels,
             onToggleFavourite = { channel -> vm.toggleFavourite(channel) },
-            onChannelSelected = { channel -> vm.selectChannel(player, channel) },
+            onChannelSelected = { channel -> vm.selectChannel(channel) },
             onRefresh = { vm.refresh() },
             onOpenSettings = { vm.openSettings() },
             onPlaySequenceChanged = { vm.onPlaySequenceChanged(it) }
@@ -85,15 +85,15 @@ fun IptvApp(
     } else {
         PlayerScreen(
             player = player,
-            channelName = current.name,
+            selectedChannel = current,
             isInPip = isInPip,
             dataSaver = vm.dataSaver,
             audioOnly = vm.audioOnly,
             nowNext = vm.nowNext,
             onToggleDataSaver = { vm.toggleDataSaver(player) },
             onToggleAudioOnly = { vm.toggleAudioOnly(player) },
-            onPrevChannel = { vm.moveChannel(player, current, -1) },
-            onNextChannel = { vm.moveChannel(player, current, 1) },
+            onPrevChannel = { vm.moveChannel(current, -1) },
+            onNextChannel = { vm.moveChannel(current, 1) },
             onPlaybackFailed = { vm.onPlaybackFailed() },
             onPlaybackSucceeded = { vm.onPlaybackSucceeded() },
             onBack = { vm.back(player) }

@@ -9,7 +9,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
 import com.example.iptvapp.epg.EpgRepository
 import com.example.iptvapp.epg.NowNext
-import com.example.iptvapp.player.PlayerFactory
 import com.example.iptvapp.playlist.AppDatabase
 import com.example.iptvapp.playlist.M3uChannel
 import com.example.iptvapp.playlist.PlaylistRepository
@@ -231,7 +230,11 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         } else if (resumeOnLaunch) {
             val lastUrl = recents.firstOrNull() ?: return
             val last = channels.firstOrNull { it.streamUrl == lastUrl } ?: return
-            PlayerFactory.loadChannel(player, last.streamUrl, last.headers)
+            // Loading is owned by PlayerScreen: it reacts to the
+            // selectedChannel change and loads the stream (unless the player
+            // is already on it). Keeping the load out of the VM means the
+            // recovery listener is disposed with the screen rather than
+            // accumulating in process state.
             selectedChannel = last
         }
         if (selectedChannel != null) refreshNowNext()
@@ -241,8 +244,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         playingUrl = mediaId
     }
 
-    fun selectChannel(player: Player, channel: M3uChannel) {
-        PlayerFactory.loadChannel(player, channel.streamUrl, channel.headers)
+    fun selectChannel(channel: M3uChannel) {
         selectedChannel = channel
         recentsStore.add(channel.streamUrl)
         recents = recentsStore.recents()
@@ -250,7 +252,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Channel zapping through the list the user came from, skipping dead ones. */
-    fun moveChannel(player: Player, from: M3uChannel, delta: Int) {
+    fun moveChannel(from: M3uChannel, delta: Int) {
         val alive = playSequence
             .filterNot { it.streamUrl in deadChannels }
             .ifEmpty { playSequence }
@@ -258,7 +260,6 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         val index = alive.indexOfFirst { it.streamUrl == from.streamUrl }
         if (index < 0) return
         val next = alive[(index + delta).mod(alive.size)]
-        PlayerFactory.loadChannel(player, next.streamUrl, next.headers)
         selectedChannel = next
         recentsStore.add(next.streamUrl)
         recents = recentsStore.recents()

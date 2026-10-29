@@ -50,6 +50,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.ui.PlayerView
+import com.example.iptvapp.player.PlayerFactory
+import com.example.iptvapp.player.RecoveryBudget
+import com.example.iptvapp.player.bufferingWarningDue
 import kotlinx.coroutines.delay
 
 /**
@@ -66,7 +69,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun PlayerScreen(
     player: Player,
-    channelName: String,
+    selectedChannel: com.example.iptvapp.playlist.M3uChannel,
     isInPip: Boolean,
     dataSaver: Boolean,
     audioOnly: Boolean,
@@ -79,18 +82,48 @@ fun PlayerScreen(
     onPlaybackSucceeded: () -> Unit,
     onBack: () -> Unit
 ) {
+    val channelName = selectedChannel.name
     var isBuffering by remember { mutableStateOf(false) }
     // Seeded from the player so an error that struck while the UI was gone
     // (background play) still shows its card on return.
     var statusMessage by remember {
-        mutableStateOf(
-            player.playerError?.let {
-                "This channel isn't playable right now (${it.errorCodeName})."
-            }
-        )
+        mutableStateOf(player.playerError?.let { playbackErrorMessage(it) })
+    }
+    var bufferingWarning by remember { mutableStateOf<String?>(null) }
+    // A per-load attempt identifier. It is bumped every time a channel starts
+    // loading, becomes ready, or hits an error, so a buffering timer or
+    // warning belonging to an old (switched-away) channel can never mark the
+    // current channel dead or leave a stale message behind.
+    var playbackAttemptId by remember { mutableStateOf(0) }
+    // Shared by the player listener and the channel-load effect below. The
+    // lambda only touches the state object, so it stays valid across
+    // recompositions.
+    val startNewAttempt: () -> Unit = {
+        playbackAttemptId = (playbackAttemptId + 1).takeUnless { it == Int.MIN_VALUE } ?: 0
     }
     var videoInfo by remember { mutableStateOf(videoInfoText(player)) }
     val display = remember(channelName) { parseDisplay(channelName) }
+
+    // Load the selected channel onto the player. Skipped when the player is
+    // already on this MediaItem (e.g. reopening the app while it plays, or
+    // attaching to a background session) so we don't restart playback.
+    // A single Player.Listener below owns UI updates AND the bounded
+    // application-level recovery, so two listeners never race (one marking a
+    // channel dead while another re-prepares it).
+    val recoveryBudget = remember { RecoveryBudget() }
+    LaunchedEffect(selectedChannel.streamUrl) {
+        if (player.currentMediaItem?.mediaId == selectedChannel.streamUrl) return@LaunchedEffect
+        startNewAttempt()
+        statusMessage = null
+        bufferingWarning = null
+        // A new channel starts a fresh recovery episode.
+        recoveryBudget.reset()
+        PlayerFactory.loadChannel(
+            player,
+            selectedChannel.streamUrl,
+            selectedChannel.headers
+        )
+    }
 
     // Landscape = video fills the screen; the PlayerView controller and
     // the system back gesture still work without the header bar.
@@ -116,12 +149,19 @@ fun PlayerScreen(
     // library or back stack to intercept it otherwise.
     BackHandler(onBack = onBack)
 
-    DisposableEffect(player) {
+    DisposableEffect(player, selectedChannel.streamUrl) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isBuffering = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
+                    // A fresh attempt and a fresh recovery episode when
+                    // playback becomes healthy for this channel — this also
+                    // cancels any buffering timer waiting from an earlier
+                    // state.
+                    startNewAttempt()
+                    recoveryBudget.reset()
                     statusMessage = null
+                    bufferingWarning = null
                     videoInfo = videoInfoText(player)
                     // A "dead" channel that plays again is forgiven — the
                     // dead-channel memory self-heals.
@@ -130,11 +170,27 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                // Anything reaching here that PlayerFactory didn't already
-                // recover from (a genuinely dead or geo-blocked stream, or
-                // an unsupported format) gets a visible message instead
-                // of a silently stuck screen.
-                statusMessage = "This channel isn't playable right now (${error.errorCodeName})."
+                // ExoPlayer's load-error policy already retried transient
+                // failures internally. This is the single bounded
+                // application-level safety net: one re-prepare per playback
+                // episode, and only while the failed stream is still the
+                // selected one. Recovering is treated as transient, so we do
+                // NOT flash a dead-channel card or poison the dead cache for a
+                // stream that may come back on the retry.
+                if (recoveryBudget.tryConsume(player.currentMediaItem?.mediaId, selectedChannel.streamUrl)) {
+                    startNewAttempt()
+                    statusMessage = null
+                    bufferingWarning = null
+                    player.prepare()
+                    player.playWhenReady = true
+                    return
+                }
+                // Budget spent (or the player moved on): surface the failure
+                // and record it. Buffering alone never marks a channel dead —
+                // only this genuine error path does.
+                startNewAttempt()
+                statusMessage = playbackErrorMessage(error)
+                bufferingWarning = null
                 onPlaybackFailed()
             }
 
@@ -150,20 +206,25 @@ fun PlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
-    // If buffering drags on this long with no recovery, it's more likely a
-    // dead/geo-blocked/too-high-bitrate stream than a briefly slow one —
-    // say so instead of spinning forever.
-    LaunchedEffect(isBuffering) {
+    // Buffered for longer than this with no recovery, warn the user that the
+    // connection is slow or the stream may be dead/geo-blocked/too-high-
+    // bitrate. Crucially this does NOT mark the channel dead: a fixed
+    // buffering timer is exactly how slow-but-legitimate streams get
+    // misclassified. The timer captures the attempt it started for and the
+    // pure bufferingWarningDue() guard cancels it when buffering ends or the
+    // attempt changes (channel switch), so a stale timer can never warn — or
+    // kill — a newly selected channel.
+    LaunchedEffect(isBuffering, playbackAttemptId) {
         if (isBuffering) {
-            delay(20_000)
-            if (isBuffering) {
-                statusMessage = "Still buffering after 20s — this channel may be dead, " +
-                    "geo-blocked, or too-high-bitrate for your current connection."
-                // A stream that never came up counts as a failure for the
-                // dead-channel memory too — the list dims it and skips it
-                // in Recently watched until the failure expires.
-                onPlaybackFailed()
+            val timerAttemptId = playbackAttemptId
+            delay(BUFFERING_WARNING_AFTER_MS)
+            if (bufferingWarningDue(isBuffering, timerAttemptId, playbackAttemptId)) {
+                bufferingWarning = "Still buffering after " +
+                    "${BUFFERING_WARNING_AFTER_MS / 1000}s — the connection may be slow, " +
+                    "or this channel could be geo-blocked or too high-bitrate for your network."
             }
+        } else {
+            bufferingWarning = null
         }
     }
 
@@ -275,43 +336,55 @@ fun PlayerScreen(
 
             // Any error while in PiP just shows a quiet black window; the
             // card is only useful once the user is back in the app.
-            if (!isInPip) statusMessage?.let { message ->
-                Column(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(PaletteSurface)
-                        .padding(16.dp)
-                ) {
-                    Text(message, color = PaletteOffline)
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = onBack,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = PaletteGold,
-                                contentColor = PaletteBackground
-                            ),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Back to channels")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                statusMessage = null
-                                player.prepare()
-                                player.playWhenReady = true
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, PaletteOutline),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = PaletteTextPrimary
-                            ),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Retry")
+            if (!isInPip) {
+                val cardMessage = bufferingWarning ?: statusMessage
+                cardMessage?.let { message ->
+                    Column(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(PaletteSurface)
+                            .padding(16.dp)
+                    ) {
+                        Text(message, color = PaletteOffline)
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = onBack,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = PaletteGold,
+                                    contentColor = PaletteBackground
+                                ),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Back to channels")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    // User-initiated retry starts a fresh attempt:
+                                    // clears any warning, bumps the attempt so the
+                                    // buffering timer restarts, and lets the player
+                                    // try again. If this is the *only* error that
+                                    // ever occurred (no genuine dead stream), the
+                                    // retry succeeds and the channel is never
+                                    // marked dead.
+                                    bufferingWarning = null
+                                    statusMessage = null
+                                    startNewAttempt()
+                                    player.prepare()
+                                    player.playWhenReady = true
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, PaletteOutline),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = PaletteTextPrimary
+                                ),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Retry")
+                            }
                         }
                     }
                 }
