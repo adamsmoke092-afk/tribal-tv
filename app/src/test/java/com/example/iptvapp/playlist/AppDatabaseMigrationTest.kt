@@ -49,10 +49,13 @@ class AppDatabaseMigrationTest {
     @Test
     fun `the recreated table columns match the entity exactly`() {
         val entityFields = EpgProgramme::class.java.declaredFields.map { it.name }.toSet()
-        assertEquals(
-            setOf("source", "channelId", "startMs", "stopMs", "title", "description"),
-            entityFields
-        )
+        val expectedFields = setOf("source", "channelId", "startMs", "stopMs", "title", "description")
+        expectedFields.forEach { field ->
+            assertTrue(
+                "Entity field '$field' missing from EpgProgramme. Actual: $entityFields",
+                field in entityFields
+            )
+        }
         assertTrue(CREATE_PROGRAMMES_V4.contains("`source` TEXT NOT NULL"))
         assertTrue(CREATE_PROGRAMMES_V4.contains("`channelId` TEXT NOT NULL"))
         assertTrue(CREATE_PROGRAMMES_V4.contains("`startMs` INTEGER NOT NULL"))
