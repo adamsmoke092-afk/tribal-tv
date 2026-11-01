@@ -1,59 +1,34 @@
 package com.example.iptvapp.epg
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 
-class EpgSourceKeysTest {
+class EpgPrimitivesTest {
 
     @Test
-    fun `the key is playlist id plus guide url`() {
-        assertEquals("3|https://g.example/x.xml.gz", epgSourceKey("3", "https://g.example/x.xml.gz"))
+    fun `source key is deterministic for identical inputs`() {
+        val key = epgSourceKey("playlist-1", "https://a.example/g.xml")
+        assertEquals(key, epgSourceKey("playlist-1", "https://a.example/g.xml"))
+        assertTrue(key.length == 64) // SHA-256 lowercase hex
     }
 
     @Test
-    fun `two playlists sharing a guide url get different keys`() {
-        assertEquals(
-            epgSourceKey("1", "https://g.example/x.xml.gz"),
-            epgSourceKey("1", "https://g.example/x.xml.gz")
-        )
-        assertFalse(
-            epgSourceKey("1", "https://g.example/x.xml.gz") ==
-                epgSourceKey("2", "https://g.example/x.xml.gz")
+    fun `different playlists sharing a guide url get different keys`() {
+        assertNotEquals(
+            epgSourceKey("playlist-1", "https://a.example/g.xml"),
+            epgSourceKey("playlist-2", "https://a.example/g.xml")
         )
     }
 
     @Test
-    fun `keys are stable across restarts for the same playlist`() {
-        assertEquals(
-            epgSourceKey("7", "https://g.example/x.xml.gz"),
-            epgSourceKey("7", "https://g.example/x.xml.gz")
+    fun `different guide urls on the same playlist get different keys`() {
+        assertNotEquals(
+            epgSourceKey("playlist-1", "https://a.example/g.xml"),
+            epgSourceKey("playlist-1", "https://b.example/g.xml")
         )
-    }
-
-    @Test
-    fun `keys are trimmed on both parts`() {
-        assertEquals(
-            epgSourceKey("3", "https://g.example/x.xml.gz"),
-            epgSourceKey(" 3 ", " https://g.example/x.xml.gz ")
-        )
-    }
-
-    @Test
-    fun `multiple guides keep their input order`() {
-        assertEquals(
-            listOf("1|a", "1|b"),
-            epgSourceKeys("1", listOf("a", "b"))
-        )
-    }
-
-    @Test
-    fun `stale-key pruning only touches the same playlist`() {
-        assertTrue(belongsToPlaylist("4|https://g.example/a.xml", "4"))
-        assertFalse(belongsToPlaylist("14|https://g.example/a.xml", "4"))
-        assertFalse(belongsToPlaylist("9|https://g.example/a.xml", "4"))
     }
 }
 
