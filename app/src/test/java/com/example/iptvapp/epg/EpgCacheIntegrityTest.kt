@@ -132,11 +132,11 @@ class EpgCacheIntegrityTest {
 
         repository.storeParsedSource(
             keyA, "https://a.example/g.xml",
-            parse(programme("nasaTV", 1_000, 2_000, "A cached")), ids, looseMatching = false
+            parse(programme("nasaTV@HD", 1_000, 2_000, "A cached")), ids, looseMatching = false
         )
         repository.storeParsedSource(
             keyB, "https://b.example/g.xml",
-            parse(programme("nasaTV", 3_000, 4_000, "B cached")), ids, looseMatching = false
+            parse(programme("nasaTV@HD", 3_000, 4_000, "B cached")), ids, looseMatching = false
         )
         val before = dao.count()
 
@@ -157,7 +157,7 @@ class EpgCacheIntegrityTest {
         val key = epgSourceKey("1", "https://a.example/g.xml")
         repository.storeParsedSource(
             key, "https://a.example/g.xml",
-            parse(programme("nasaTV", 1_000, 2_000, "Kept")), ids, looseMatching = false
+            parse(programme("nasaTV@HD", 1_000, 2_000, "Kept")), ids, looseMatching = false
         )
 
         val empty = repository.storeParsedSource(key, "https://a.example/g.xml", parse(), ids, looseMatching = false)
@@ -316,9 +316,10 @@ class EpgCacheIntegrityTest {
     @Test
     fun `refresh with no reachable source still prunes expired rows and reports failure`() = runBlocking {
         val key = epgSourceKey("1", "http://127.0.0.1:1/gone.xml")
+        val now = System.currentTimeMillis()
         repository.storeParsedSource(
             key, "http://127.0.0.1:1/gone.xml",
-            parse(programme("nasaTV@HD", 1_000, 2_000, "Old")), ids, looseMatching = false
+            parse(programme("nasaTV@HD", now + 60_000, now + 120_000, "Old")), ids, looseMatching = false
         )
 
         val result = repository.refresh(

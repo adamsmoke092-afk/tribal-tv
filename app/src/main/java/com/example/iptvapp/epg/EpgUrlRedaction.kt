@@ -58,10 +58,12 @@ private fun redactPath(path: String): String {
             hideNext = false
             continue
         }
-        if (isSensitivePathSegment(segment)) {
+        if (SENSITIVE_KEYWORD.containsMatchIn(segment) || segment.contains(':') || segment.contains('=')) {
             out.add("<redacted>")
             // "user/john", "pass/abc123": the keyword names the NEXT segment.
             hideNext = SENSITIVE_KEYWORD.containsMatchIn(segment)
+        } else if (segment.length > MAX_HUMAN_SEGMENT) {
+            out.add(segment.take(3) + "…")
         } else {
             out.add(segment)
         }
@@ -80,10 +82,12 @@ fun redactEpgUrl(url: String): String {
         val uri = java.net.URI(withoutQuery)
         val scheme = uri.scheme
         val host = uri.host
+        val port = uri.port
         if (scheme == null || host.isNullOrBlank()) {
             withoutQuery.take(80)
         } else {
-            scheme + "://" + host + redactPath(uri.rawPath.orEmpty())
+            val authority = if (port != -1) "$host:$port" else host
+            scheme + "://" + authority + redactPath(uri.rawPath.orEmpty())
         }
     } catch (e: Exception) {
         withoutQuery.take(80)
