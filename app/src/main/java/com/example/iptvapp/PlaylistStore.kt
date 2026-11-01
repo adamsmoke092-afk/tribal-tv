@@ -72,7 +72,54 @@ class PlaylistStore(context: Context) {
             .putString(KEY_IDS, formatIds(ids().filterNot { it == id }))
             .remove(nameKey(id))
             .remove(urlKey(id))
+            .remove(epgOverrideKey(id))
+            .remove(epgHeaderKey(id))
             .apply()
+    }
+
+    // ---- per-playlist EPG metadata ----------------------------------------
+    //
+    // EPG configuration is per PLAYLIST, never global: one playlist's manual
+    // override or declared guide must not affect another's, and switching
+    // playlists restores exactly that playlist's own settings.
+
+    /** The user's manual EPG override for ONE playlist. Empty means none. */
+    fun epgOverride(id: Long): String = prefs.getString(epgOverrideKey(id), "").orEmpty()
+
+    fun setEpgOverride(id: Long, url: String) {
+        prefs.edit().putString(epgOverrideKey(id), url.trim()).apply()
+    }
+
+    /** The guide URL this playlist declared in its own M3U header, if any. */
+    fun epgHeaderUrl(id: Long): String = prefs.getString(epgHeaderKey(id), "").orEmpty()
+
+    fun setEpgHeaderUrl(id: Long, url: String) {
+        prefs.edit().putString(epgHeaderKey(id), url.trim()).apply()
+    }
+
+    /**
+     * One-time migration of the pre-per-playlist global EPG setting
+     * (SettingsStore's `epg_url`) onto the CURRENT active playlist.
+     *
+     *  - runs at most once, guarded by a flag,
+     *  - touches only that one playlist — never every playlist,
+     *  - refuses to run before a real active playlist exists, so the legacy
+     *    value is NOT discarded prematurely: the flag stays unset and the old
+     *    preference stays readable, so a later call migrates it properly.
+     *
+     * @return the manual override now in force for that playlist, or null when
+     *         there was nothing to migrate.
+     */
+    fun migrateLegacyEpgOverride(legacyUrl: String, activePlaylistId: Long): String? {
+        if (activePlaylistId == NEW_PLAYLIST_ID || activePlaylistId <= 0L) return null
+        if (prefs.getBoolean(KEY_LEGACY_EPG_MIGRATED, false)) {
+            return epgOverride(activePlaylistId).ifEmpty { null }
+        }
+        prefs.edit().putBoolean(KEY_LEGACY_EPG_MIGRATED, true).apply()
+        val trimmed = legacyUrl.trim()
+        if (trimmed.isEmpty()) return null
+        setEpgOverride(activePlaylistId, trimmed)
+        return trimmed
     }
 
     /** Renaming never touches the URL or the active flag — no fetch needed. */
@@ -100,11 +147,18 @@ class PlaylistStore(context: Context) {
 
     private fun urlKey(id: Long) = "${KEY_PREFIX_URL}$id"
 
+    private fun epgOverrideKey(id: Long) = "${KEY_PREFIX_EPG_OVERRIDE}$id"
+
+    private fun epgHeaderKey(id: Long) = "${KEY_PREFIX_EPG_HEADER}$id"
+
     companion object {
         private const val KEY_IDS = "playlist_ids"
         private const val KEY_ACTIVE = "active_playlist_id"
+        private const val KEY_LEGACY_EPG_MIGRATED = "legacy_epg_migrated"
         private const val KEY_PREFIX_NAME = "playlist_name_"
         private const val KEY_PREFIX_URL = "playlist_url_"
+        private const val KEY_PREFIX_EPG_OVERRIDE = "playlist_epg_override_"
+        private const val KEY_PREFIX_EPG_HEADER = "playlist_epg_header_"
     }
 }
 

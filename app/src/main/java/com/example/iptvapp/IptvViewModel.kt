@@ -7,12 +7,18 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
+import com.example.iptvapp.epg.EpgRefreshResult
+import com.example.iptvapp.epg.EpgRefreshState
 import com.example.iptvapp.epg.EpgRepository
+import com.example.iptvapp.epg.EpgSourceOrigin
+import com.example.iptvapp.epg.EpgSourceResult
 import com.example.iptvapp.epg.NowNext
+import com.example.iptvapp.epg.epgSourceKeys
 import com.example.iptvapp.playlist.AppDatabase
 import com.example.iptvapp.playlist.M3uChannel
 import com.example.iptvapp.playlist.PlaylistRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -90,7 +96,19 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var lastRefreshText by mutableStateOf<String?>(null)
         private set
-    var epgUrl by mutableStateOf("")
+    // This playlist's OWN manual EPG override (was one global setting).
+    var epgManualOverride by mutableStateOf("")
+        private set
+    // The guide URL(s) this playlist declared in its own M3U header, if any.
+    var epgHeaderUrl by mutableStateOf("")
+        private set
+    // Loose quality-alias matching for EPG ids. Default OFF (exact only).
+    var epgLoose by mutableStateOf(false)
+        private set
+    // What the diagnostics line shows for this playlist's EPG.
+    var epgStatus by mutableStateOf<EpgUiStatus?>(null)
+        private set
+    var epgLoading by mutableStateOf(false)
         private set
     // Now/next for the currently selected channel; null when EPG is off or
     // the channel has no guide data.
@@ -100,6 +118,16 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     // Guards so a refresh (which re-emits channels) can't re-trigger the
     // once-per-session resume/attach.
     private var attached = false
+
+    // The EPG refresh for the CURRENT playlist. Cancelled and replaced when
+    // the playlist changes, so an old playlist's network work can neither
+    // overwrite the new playlist's diagnostics nor keep running pointlessly.
+    private var epgRefreshJob: Job? = null
+    // Bumped on every playlist switch; a refresh captures the value it started
+    // with and abandons its UI writes if it no longer matches. Cancelling the
+    // job is the primary guard; this catches anything already past a
+    // suspension point when the cancel lands.
+    private var epgGeneration = 0
 
     init {
         viewModelScope.launch {
@@ -133,7 +161,12 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             favourites = favouritesStore.favourites()
             recents = recentsStore.recents()
             deadChannels = deadStore.dead()
-            epgUrl = settings.epgUrl()
+            epgLoose = settings.epgLooseMatching()
+            // One-time carry-over of the old global EPG setting onto the
+            // playlist that is active right now, then per-playlist from here.
+            playlistStore.migrateLegacyEpgOverride(settings.epgUrl(), active.id)
+            epgManualOverride = playlistStore.epgOverride(active.id)
+            epgHeaderUrl = playlistStore.epgHeaderUrl(active.id)
             ready = true
 
             loadInitialChannels()
@@ -142,56 +175,120 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Refreshes the EPG cache in the background when at least one guide URL
-     * is in play and the cache is empty or stale. Silent: EPG is a
-     * nice-to-have, so a failure just leaves now/next blank rather than
-     * surfacing an error.
+     * Refreshes the EPG cache in the background when at least one guide URL is
+     * in play and the cache is empty or stale. Silent: EPG is a nice-to-have,
+     * so a failure leaves now/next blank and shows up as diagnostics rather
+     * than an error dialog.
+     *
+     * Job + generation guards (requirement: an asynchronous refresh belonging
+     * to an old playlist must never touch the newly selected playlist's state):
+     * the previous job is cancelled before a new one starts, and the new job
+     * captures the generation it was created for, refusing every UI write if
+     * the playlist has changed since — including between two suspension points
+     * where a cancel could not land.
      */
-    private fun maybeRefreshEpg() {
+    private fun maybeRefreshEpg(force: Boolean = false) {
+        epgGeneration++
+        val generation = epgGeneration
         val urls = effectiveEpgUrls()
-        if (urls.isEmpty()) return
-        viewModelScope.launch {
-            val stale = System.currentTimeMillis() - settings.lastEpgRefreshMs() > STALE_EPG_MS
-            val hasData = runCatching { epgRepository.hasData() }.getOrDefault(false)
-            if (hasData && !stale) {
-                refreshNowNext()
-                return@launch
-            }
+        if (urls.isEmpty()) {
+            epgRefreshJob?.cancel()
+            epgRefreshJob = null
+            epgStatus = epgStatusOff()
+            return
+        }
+        epgRefreshJob?.cancel()
+        epgRefreshJob = viewModelScope.launch {
+            epgLoading = true
             try {
+                val stale = force || System.currentTimeMillis() - settings.lastEpgRefreshMs() > STALE_EPG_MS
+                val keys = epgSourceKeys(activePlaylistId.toString(), urls)
+                val hasData = runCatching { epgRepository.hasData(keys) }.getOrDefault(false)
+                if (hasData && !stale) {
+                    if (generation != epgGeneration) return@launch
+                    epgStatus = buildEpgStatus(result = null, isLoading = false)
+                    refreshNowNext()
+                    return@launch
+                }
                 val channelIds = channels.mapNotNull { it.tvgId?.takeIf { id -> id.isNotBlank() } }.toSet()
-                if (channelIds.isEmpty()) return@launch
-                epgRepository.refresh(urls, channelIds)
+                if (channelIds.isEmpty()) {
+                    if (generation != epgGeneration) return@launch
+                    epgStatus = buildEpgStatus(result = null, isLoading = false)
+                    refreshNowNext()
+                    return@launch
+                }
+                val result = epgRepository.refresh(
+                    playlistKey = activePlaylistId.toString(),
+                    guideUrls = urls,
+                    playlistIds = channelIds,
+                    looseMatching = epgLoose
+                )
                 settings.setLastEpgRefreshMs(System.currentTimeMillis())
+                if (generation != epgGeneration) return@launch // playlist switched mid-refresh
+                epgStatus = buildEpgStatus(result = result, isLoading = false)
                 refreshNowNext()
-            } catch (e: Exception) {
-                // EPG is optional — keep any existing cache and stay quiet.
+            } finally {
+                if (generation == epgGeneration) epgLoading = false
             }
         }
     }
 
     /**
-     * The guide URLs actually in use: the manual setting when set (may be
-     * several, comma-separated — merged for mixed/category playlists),
-     * otherwise the auto-paired iptv-org country guide for the active
-     * playlist, and empty (EPG off) when neither applies.
+     * The guide URLs actually in force for the ACTIVE playlist, by precedence:
+     * that playlist's manual override, else the guide URL its own M3U header
+     * declares, else none. The two are never combined, so a failing manual
+     * override cannot silently fall back to the playlist's URL.
      */
-    private fun effectiveEpgUrls(): List<String> {
-        val manual = parseEpgUrls(settings.epgUrl())
-        if (manual.isNotEmpty()) return manual
-        return listOfNotNull(autoEpgUrlForPlaylist(playlistUrl))
-    }
+    private fun effectiveEpgUrls(): List<String> =
+        effectiveEpgUrlsFor(epgManualOverride, epgHeaderUrl)
 
     /** Recomputes now/next for the selected channel's tvg-id. */
     private fun refreshNowNext() {
-        val tvgId = selectedChannel?.tvgId
+        val channel = selectedChannel
+        val tvgId = channel?.tvgId
         if (tvgId.isNullOrBlank()) {
             nowNext = null
             return
         }
+        val keys = epgSourceKeys(activePlaylistId.toString(), effectiveEpgUrls())
         viewModelScope.launch {
-            nowNext = runCatching { epgRepository.nowNext(tvgId) }.getOrNull()
+            val result = runCatching { epgRepository.nowNext(tvgId, keys) }.getOrNull()
+            // A zap mid-lookup must not show the previous channel's schedule.
+            if (selectedChannel?.tvgId == tvgId) nowNext = result
         }
     }
+
+    /** Builds the diagnostics state from the last refresh plus the active URLs. */
+    private suspend fun buildEpgStatus(result: EpgRefreshResult?, isLoading: Boolean): EpgUiStatus {
+        val urls = effectiveEpgUrls()
+        val origin = epgSourceOrigin(epgManualOverride, epgHeaderUrl)
+        val keys = epgSourceKeys(activePlaylistId.toString(), urls)
+        val cached = runCatching { epgRepository.countCached(keys) }.getOrDefault(0)
+        return EpgUiStatus(
+            state = result?.state(isLoading) ?: epgRefreshState(emptyList(), cached, isLoading),
+            sources = result?.sources ?: emptyList(),
+            loadedSources = result?.summary?.loaded ?: 0,
+            failedSources = result?.summary?.failed ?: 0,
+            truncatedSources = result?.summary?.truncated ?: 0,
+            matchedChannels = result?.matchedChannels ?: 0,
+            cachedProgrammes = cached,
+            activeUrls = urls,
+            origin = origin
+        )
+    }
+
+    /** Diagnostics for a playlist with no guide configured at all. */
+    private fun epgStatusOff(): EpgUiStatus = EpgUiStatus(
+        state = EpgRefreshState.NO_GUIDE_CONFIGURED,
+        sources = emptyList(),
+        loadedSources = 0,
+        failedSources = 0,
+        truncatedSources = 0,
+        matchedChannels = 0,
+        cachedProgrammes = 0,
+        activeUrls = emptyList(),
+        origin = EpgSourceOrigin.NONE
+    )
 
     private fun updateChannels(list: List<M3uChannel>) {
         channels = list
@@ -246,6 +343,8 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectChannel(channel: M3uChannel) {
         selectedChannel = channel
+        // Never let the previous channel's schedule flash on the new one.
+        nowNext = null
         recentsStore.add(channel.streamUrl)
         recents = recentsStore.recents()
         refreshNowNext()
@@ -261,6 +360,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         if (index < 0) return
         val next = alive[(index + delta).mod(alive.size)]
         selectedChannel = next
+        nowNext = null
         recentsStore.add(next.streamUrl)
         recents = recentsStore.recents()
         refreshNowNext()
@@ -288,7 +388,12 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isRefreshing = true
             try {
-                updateChannels(repository.refreshChannels(playlistUrl))
+                // Re-read the playlist's own header so its declared guide
+                // stays current, then show the refreshed channels.
+                val playlist = repository.fetchPlaylist(playlistUrl)
+                playlistStore.setEpgHeaderUrl(activePlaylistId, playlist.epgUrls.joinToString(","))
+                epgHeaderUrl = playlist.epgUrls.joinToString(",")
+                updateChannels(playlist.channels)
                 loadError = null
             } catch (e: Exception) {
                 loadError = "Refresh failed: ${e.message}"
@@ -350,7 +455,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             if (targetUrl.isNotEmpty()) {
                 // Fetch/parse FIRST — throws before the cache or any store
                 // is touched, so a failure leaves everything as it was.
-                val loaded = repository.refreshChannels(targetUrl)
+                val playlist = repository.fetchPlaylist(targetUrl)
                 draft.renamedPlaylists.forEach { (id, name) -> playlistStore.rename(id, name) }
                 draft.removedPlaylistIds.forEach { playlistStore.remove(it) }
                 if (newName != null && newUrl != null) {
@@ -359,14 +464,29 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     playlistStore.setActive(draft.selectedPlaylistId)
                 }
-                updateChannels(loaded)
+                val activeId = playlistStore.activePlaylist().id
+                // Persist what THIS playlist declares in its own header. An
+                // empty header clears the stored URL: the playlist changed.
+                val headerUrls = playlist.epgUrls.joinToString(",")
+                playlistStore.setEpgHeaderUrl(activeId, headerUrls)
+
+                // Restore THAT playlist's own EPG configuration, then switch
+                // the UI over to it. Cancels any in-flight refresh belonging
+                // to the old playlist and bumps the generation so a result
+                // that already escaped cancellation cannot be written.
+                epgRefreshJob?.cancel()
+                epgGeneration++
+                activePlaylistId = activeId
                 playlistUrl = targetUrl
-                // The EPG cache was scoped to the OLD playlist's tvg-ids —
-                // a playlist swap invalidates it even when the guide URL
-                // itself didn't change (auto-pair may resolve differently,
-                // and manual guides rarely cover a different playlist).
+                updateChannels(playlist.channels)
+                epgManualOverride = playlistStore.epgOverride(activeId)
+                epgHeaderUrl = headerUrls
+                // The EPG cache is scoped to the OLD playlist's source keys —
+                // a playlist swap invalidates it even when the guide URL is
+                // unchanged (its rows belong to another playlist's keys).
                 settings.setLastEpgRefreshMs(0L)
                 nowNext = null
+                epgStatus = null
                 epgNeedsRefetch = true
             } else {
                 draft.renamedPlaylists.forEach { (id, name) -> playlistStore.rename(id, name) }
@@ -399,16 +519,24 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 settings.setAudioOnly(audioOnly)
                 applyPlaybackPreferences(player, dataSaver, audioOnly)
             }
-            if (draft.epgUrl != epgUrl) {
-                epgUrl = draft.epgUrl
-                settings.setEpgUrl(draft.epgUrl)
+            if (draft.epgLoose != epgLoose) {
+                epgLoose = draft.epgLoose
+                settings.setEpgLooseMatching(draft.epgLoose)
+                // Matching changed: same sources, different rows. Refetch.
+                epgNeedsRefetch = true
+            }
+            if (draft.epgUrl != epgManualOverride) {
+                // The EPG field edits THIS playlist's override — no other
+                // playlist's configuration is touched.
+                playlistStore.setEpgOverride(activePlaylistId, draft.epgUrl)
+                epgManualOverride = draft.epgUrl
                 // A new/cleared guide invalidates the cached freshness so the
                 // next launch refetches. Clearing it also blanks now/next.
                 settings.setLastEpgRefreshMs(0L)
                 nowNext = null
                 epgNeedsRefetch = true
             }
-            if (epgNeedsRefetch) maybeRefreshEpg()
+            if (epgNeedsRefetch) maybeRefreshEpg(force = true)
             playlists = playlistStore.playlists()
             activePlaylistId = playlistStore.activePlaylist().id
             null
@@ -417,3 +545,21 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
+
+/**
+ * What the settings dialog shows about the active playlist's EPG. Pure data —
+ * the dialog formats it. [activeUrls] and [origin] answer "which guide is in
+ * force and did it come from me or from the playlist"; the counts come from
+ * the last refresh.
+ */
+data class EpgUiStatus(
+    val state: EpgRefreshState,
+    val sources: List<EpgSourceResult>,
+    val loadedSources: Int,
+    val failedSources: Int,
+    val truncatedSources: Int,
+    val matchedChannels: Int,
+    val cachedProgrammes: Int,
+    val activeUrls: List<String>,
+    val origin: EpgSourceOrigin
+)

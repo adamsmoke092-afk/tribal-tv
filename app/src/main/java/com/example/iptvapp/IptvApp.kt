@@ -77,7 +77,9 @@ fun IptvApp(
                 initialResumeOnLaunch = vm.resumeOnLaunch,
                 initialDataSaver = vm.dataSaver,
                 initialAudioOnly = vm.audioOnly,
-                initialEpgUrl = vm.epgUrl,
+                initialEpgLoose = vm.epgLoose,
+                initialEpgUrl = vm.epgManualOverride,
+                epgStatus = vm.epgStatus,
                 onDismiss = { vm.closeSettings() },
                 onSave = { draft -> vm.saveSettings(player, draft) }
             )

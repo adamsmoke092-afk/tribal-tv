@@ -43,12 +43,20 @@ Built entirely via GitHub Actions — the dev device can't run Gradle.
   way — it lives in PlaybackService).
 - Streams can carry `#EXTVLCOPT` HTTP headers (user-agent/referrer/origin);
   the app parses them and sends them with every request for that stream.
-- EPG: NOW/NEXT on the player. iptv-org country playlists auto-pair with
-  their per-country XMLTV guide (`uk.m3u` → `uk.xml.gz`); a manual guide URL
-  in Settings overrides the auto-match — several comma-separated URLs get
-  fetched and merged, so mixed playlists (e.g. iptv-org categories) can
-  combine country guides. The cache is scoped to your playlist's `tvg-id`s
-  and a 48h window to stay light; channels not in any guide show nothing.
+- EPG: NOW/NEXT on the player. Configuration is per playlist — a playlist's
+  own `url-tvg` / `x-tvg-url` header is used unless you set a manual guide URL
+  for that playlist in Settings (which wins). Several comma-separated URLs get
+  fetched and merged, so mixed playlists can combine country guides. The
+  iptv-org country auto-pair was removed: its generated URLs were unreliable.
+  The cache is scoped to your playlist's `tvg-id`s and a 48h window to stay
+  light; channels not in any guide show nothing. Settings also shows a compact
+  per-source status (loaded / failed / truncated, unmatched ids with
+  unconfirmed suggestions), plus an optional "Loose quality matching" switch
+  for guides that tag the same channel `name` vs `name@HD`.
+- Upgrading from the pre-source EPG cache (database v3 → v4): only the cached
+  EPG table is dropped and recreated, so **existing EPG schedules are
+  discarded and re-downloaded on the next guide refresh**. Channels, playlists,
+  favourites and every other setting are untouched.
 
 ## Playback reliability
 

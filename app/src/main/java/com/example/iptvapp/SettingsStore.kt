@@ -76,14 +76,21 @@ class SettingsStore(context: Context) {
     }
 
     /**
-     * XMLTV EPG guide URL. Empty (the default) means EPG is off — no guide
-     * is fetched and the player shows no now/next. Opt-in so the common
-     * case downloads nothing extra.
+     * LEGACY global manual EPG URL. Read only by the one-time migration in
+     * PlaylistStore.migrateLegacyEpgOverride, which copies it onto the active
+     * playlist's own manual override. The value is never deleted here, so it
+     * survives until a real active playlist exists to receive it.
      */
     fun epgUrl(): String = prefs.getString(KEY_EPG_URL, "") ?: ""
 
-    fun setEpgUrl(url: String) {
-        prefs.edit().putString(KEY_EPG_URL, url).apply()
+    /**
+     * Loose quality-alias matching for EPG ids. Default OFF: only exact id
+     * equality matches. The rules live in epg/EpgQualityMatch.kt.
+     */
+    fun epgLooseMatching(): Boolean = prefs.getBoolean(KEY_EPG_LOOSE_MATCHING, false)
+
+    fun setEpgLooseMatching(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_EPG_LOOSE_MATCHING, enabled).apply()
     }
 
     /** Wall-clock ms of the last successful EPG fetch; 0 = never. */
@@ -107,6 +114,7 @@ class SettingsStore(context: Context) {
         private const val KEY_GRID_LAYOUT = "grid_layout"
         private const val KEY_LAST_REFRESH_MS = "last_refresh_ms"
         private const val KEY_EPG_URL = "epg_url"
+        private const val KEY_EPG_LOOSE_MATCHING = "epg_loose_matching"
         private const val KEY_LAST_EPG_REFRESH_MS = "last_epg_refresh_ms"
     }
 }
@@ -129,26 +137,14 @@ fun isValidPlaylistUrl(url: String): Boolean {
 }
 
 /**
- * Auto-pairs an iptv-org COUNTRY playlist with its matching per-country
- * XMLTV guide (.../iptv/countries/uk.m3u -> .../epg/guides/uk.xml.gz) —
- * the one pairing where playlist tvg-ids and guide channel ids are
- * guaranteed to share a namespace. Any other URL returns null (no
- * auto-guide); the user's manual EPG setting always overrides this.
- *
- * The country code is validated as plain ASCII letters so junk paths can
- * never be spliced into the guide URL. Pure java.lang — JVM unit-testable.
+ * REMOVED (2026-10-31): the iptv-org country auto-pair
+ * (`.../iptv/countries/za.m3u` -> `.../epg/guides/za.xml.gz`) is gone by
+ * decision of the user — its generated guide URLs proved unreliable, and
+ * guessing a guide for a playlist from its URL shape is exactly the kind of
+ * silent behaviour the per-playlist EPG work removes. A playlist now gets its
+ * guide from its own `url-tvg`/`x-tvg-url` header, or from the user's manual
+ * override for that playlist. Nothing else.
  */
-fun autoEpgUrlForPlaylist(playlistUrl: String): String? {
-    val trimmed = playlistUrl.trim()
-    if (!trimmed.startsWith(IPTV_ORG_PLAYLIST_PREFIX)) return null
-    val file = trimmed.removePrefix(IPTV_ORG_PLAYLIST_PREFIX).substringBefore('?')
-    if (!file.endsWith(".m3u")) return null
-    val code = file.removeSuffix(".m3u")
-    if (code.isEmpty() || !code.all { it.isLetter() && it.code < 128 }) return null
-    return "https://iptv-org.github.io/epg/guides/${code.lowercase()}.xml.gz"
-}
-
-private const val IPTV_ORG_PLAYLIST_PREFIX = "https://iptv-org.github.io/iptv/countries/"
 
 /**
  * Splits the EPG setting into individual guide URLs: comma-separated,
@@ -158,3 +154,32 @@ private const val IPTV_ORG_PLAYLIST_PREFIX = "https://iptv-org.github.io/iptv/co
  */
 fun parseEpgUrls(raw: String): List<String> =
     raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+/** Where the EPG URLs currently in force came from. */
+enum class EpgSourceOrigin { MANUAL, PLAYLIST_HEADER, NONE }
+
+/**
+ * Which EPG source is in force for a playlist, by precedence:
+ *  1. the playlist's manual override, when the user configured one,
+ *  2. otherwise the guide URL the playlist declares in its own header,
+ *  3. otherwise none — no guessing, no auto-pairing.
+ */
+fun epgSourceOrigin(manualOverride: String?, headerUrl: String?): EpgSourceOrigin = when {
+    parseEpgUrls(manualOverride.orEmpty()).isNotEmpty() -> EpgSourceOrigin.MANUAL
+    parseEpgUrls(headerUrl.orEmpty()).isNotEmpty() -> EpgSourceOrigin.PLAYLIST_HEADER
+    else -> EpgSourceOrigin.NONE
+}
+
+/**
+ * The guide URLs in force for a playlist, by the same precedence.
+ *
+ * The two sources are NEVER combined. That is deliberate: a manual override
+ * that fails must not silently fall back to the playlist's own URL — it fails,
+ * its cached rows are preserved, and diagnostics say so. The user decides
+ * which source to use by editing the override.
+ */
+fun effectiveEpgUrlsFor(manualOverride: String?, headerUrl: String?): List<String> {
+    val manual = parseEpgUrls(manualOverride.orEmpty())
+    if (manual.isNotEmpty()) return manual
+    return parseEpgUrls(headerUrl.orEmpty())
+}

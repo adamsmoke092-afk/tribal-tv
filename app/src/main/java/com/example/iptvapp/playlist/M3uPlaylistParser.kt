@@ -6,6 +6,10 @@ package com.example.iptvapp.playlist
  * the display name is everything after the last comma on that line; the
  * following non-comment line is the stream URL.
  *
+ * Playlist-level EPG metadata is read from the #EXTM3U header only, via
+ * `url-tvg` and `x-tvg-url` — never from a channel line, so a playlist that
+ * happens to put those names on an #EXTINF cannot poison the metadata.
+ *
  * Deliberately tolerant of malformed entries (SPEC §4 notes playlist
  * metadata can't always be trusted) — a channel with no name still gets
  * a URL, a stray URL with no preceding #EXTINF is skipped rather than
@@ -27,12 +31,27 @@ object M3uPlaylistParser {
         "http-origin" to "Origin"
     )
 
-    fun parse(playlistText: String): List<M3uChannel> {
-        val lines = playlistText.lineSequence()
+    fun parse(playlistText: String): List<M3uChannel> = parsePlaylist(playlistText).channels
+
+    /**
+     * Parses a playlist into its channels plus its own declared EPG sources.
+     *
+     * Both `url-tvg` and `x-tvg-url` are honoured (different providers use
+     * different names, some use both). When BOTH appear, the `url-tvg` entries
+     * come first and the `x-tvg-url` entries follow — deterministic order, with
+     * duplicates across the two removed. Neither is reordered against itself.
+     */
+    fun parsePlaylist(playlistText: String): M3uPlaylist {
+        // A UTF-8 BOM precedes the first directive on some feeds and would
+        // otherwise stop "#EXTM3U" from being recognised at all.
+        val text = playlistText.removePrefix("\uFEFF")
+        val lines = text.lineSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
         val channels = mutableListOf<M3uChannel>()
+        val headerUrls = LinkedHashSet<String>()
+        var headerSeen = false
 
         var pendingLogo: String? = null
         var pendingGroup: String? = null
@@ -42,6 +61,17 @@ object M3uPlaylistParser {
 
         for (line in lines) {
             when {
+                line.startsWith("#EXTM3U") -> {
+                    // Only the FIRST header line carries playlist metadata;
+                    // the same attribute names on a channel line are channel
+                    // attributes and are never read here.
+                    if (!headerSeen) {
+                        headerSeen = true
+                        headerUrls += splitGuideUrls(playlistAttributeValue(line, "url-tvg"))
+                        headerUrls += splitGuideUrls(playlistAttributeValue(line, "x-tvg-url"))
+                    }
+                }
+
                 line.startsWith("#EXTINF") -> {
                     pendingLogo = TVG_LOGO_REGEX.find(line)?.groupValues?.get(1)
                     pendingGroup = GROUP_TITLE_REGEX.find(line)?.groupValues?.get(1)
@@ -64,7 +94,7 @@ object M3uPlaylistParser {
                 }
 
                 line.startsWith("#") -> {
-                    // Other directives (#EXTM3U, #EXTGRP, etc.) — ignored for now.
+                    // Other directives (#EXTGRP, comments, etc.) — ignored.
                 }
 
                 else -> {
@@ -91,6 +121,33 @@ object M3uPlaylistParser {
             }
         }
 
-        return channels
+        return M3uPlaylist(channels = channels, epgUrls = headerUrls.toList())
+    }
+
+    /**
+     * Reads one attribute off a directive line. Quoted form first (the normal
+     * case); a bare token as the fallback, so `url-tvg=http://x` still parses.
+     * Surrounding whitespace is trimmed on the value.
+     */
+    fun playlistAttributeValue(line: String, name: String): String? {
+        val quoted = Regex("""$name\s*=\s*"([^"]*)"""").find(line)?.groupValues?.get(1)
+        if (quoted != null) return quoted.trim()
+        return Regex("""$name\s*=\s*([^\s"]+)""").find(line)?.groupValues?.get(1)?.trim()
     }
 }
+
+/**
+ * A parsed playlist: its channels plus any EPG sources the playlist itself
+ * declares in its header (url-tvg / x-tvg-url).
+ */
+data class M3uPlaylist(
+    val channels: List<M3uChannel>,
+    val epgUrls: List<String>
+)
+
+/**
+ * Splits a header attribute value into guide URLs: comma-separated, trimmed,
+ * blanks dropped. Null/blank input yields an empty list. Pure, unit-testable.
+ */
+fun splitGuideUrls(raw: String?): List<String> =
+    raw?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()

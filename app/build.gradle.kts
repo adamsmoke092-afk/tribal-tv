@@ -61,6 +61,15 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric simulates the Android framework inside the JVM
+            // unit-test task and needs the merged resources/assets to do it.
+            // Used for the real Room 3 -> 4 migration test.
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -97,4 +106,13 @@ dependencies {
 
     // JVM unit tests only — nothing from this line lands in the APK.
     testImplementation("junit:junit:4.13.2")
+
+    // Robolectric runs real Android framework code (and real SQLite) inside the
+    // JVM unit-test task. That is how the Room 3 -> 4 migration is actually
+    // EXECUTED on CI instead of only being inspected as SQL. Pinned to 4.14.1:
+    // known-good with AGP 8.6 / compileSdk 35 / JDK 17, and test-only. The
+    // first run downloads the android-all jar over the network, so CI gets
+    // slower (there is no Gradle cache in this repo's workflow).
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
 }

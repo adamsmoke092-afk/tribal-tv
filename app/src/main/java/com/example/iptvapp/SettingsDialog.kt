@@ -1,6 +1,7 @@
 package com.example.iptvapp
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -62,6 +63,7 @@ data class SettingsDraft(
     val resumeOnLaunch: Boolean,
     val dataSaver: Boolean,
     val audioOnly: Boolean,
+    val epgLoose: Boolean,
     val epgUrl: String
 )
 
@@ -90,7 +92,9 @@ fun SettingsDialog(
     initialResumeOnLaunch: Boolean,
     initialDataSaver: Boolean,
     initialAudioOnly: Boolean,
+    initialEpgLoose: Boolean,
     initialEpgUrl: String,
+    epgStatus: EpgUiStatus?,
     onDismiss: () -> Unit,
     onSave: suspend (SettingsDraft) -> String?
 ) {
@@ -112,6 +116,8 @@ fun SettingsDialog(
     var resumeOnLaunch by remember { mutableStateOf(initialResumeOnLaunch) }
     var dataSaver by remember { mutableStateOf(initialDataSaver) }
     var audioOnly by remember { mutableStateOf(initialAudioOnly) }
+    var epgLoose by remember { mutableStateOf(initialEpgLoose) }
+    var diagnosticsOpen by remember { mutableStateOf(false) }
     var epgUrl by remember { mutableStateOf(initialEpgUrl) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
@@ -362,11 +368,27 @@ fun SettingsDialog(
                 )
                 Text(
                     text = "Optional XMLTV guide URL (.xml or .xml.gz) — or several, " +
-                        "comma-separated, for mixed playlists. Overrides the automatic match. " +
-                        "Blank = auto-match iptv-org country playlists; off for anything else. " +
-                        "Shows Now/Next for channels whose tvg-id is in a guide.",
+                        "comma-separated. Saved for THIS playlist only and used instead of the " +
+                        "guide the playlist declares in its own header. Blank = use the " +
+                        "playlist's own header URL, if it declares one. Shows Now/Next for " +
+                        "channels whose tvg-id is in a guide.",
                     fontSize = 11.sp,
                     color = PaletteTextSecondary
+                )
+                // What is actually in force right now, and where it came from.
+                val activeOrigin = epgStatus?.origin ?: EpgSourceOrigin.NONE
+                val activeUrls = epgStatus?.activeUrls ?: emptyList()
+                Text(
+                    text = when {
+                        activeUrls.isEmpty() && activeOrigin == EpgSourceOrigin.NONE ->
+                            "Guide: none configured for this playlist"
+                        activeOrigin == EpgSourceOrigin.MANUAL ->
+                            "Guide: your override" + (if (activeUrls.size == 1) "" else " (${activeUrls.size} sources)")
+                        else ->
+                            "Guide: from the playlist header" + (if (activeUrls.size == 1) "" else " (${activeUrls.size} sources)")
+                    },
+                    fontSize = 11.sp,
+                    color = PaletteGold
                 )
                 OutlinedTextField(
                     value = epgUrl,
@@ -387,6 +409,92 @@ fun SettingsDialog(
                         cursorColor = PaletteGold
                     )
                 )
+                SettingSwitch(
+                    label = "Loose quality matching",
+                    description = "Also match guide ids that differ only by an " +
+                        "@SD/@HD/@FHD/@UHD/@4K suffix. Off = exact ids only.",
+                    checked = epgLoose,
+                    onCheckedChange = { epgLoose = it }
+                )
+                // Compact status summary for THIS playlist's EPG.
+                val status = epgStatus
+                if (status != null) {
+                    Spacer(Modifier.height(6.dp))
+                    val stateLine = when (status.state) {
+                        EpgRefreshState.NO_GUIDE_CONFIGURED -> "No guide configured"
+                        EpgRefreshState.LOADING -> "Checking guide…"
+                        EpgRefreshState.LOADED -> "Guide loaded"
+                        EpgRefreshState.PARTIALLY_LOADED -> "Guide partly loaded"
+                        EpgRefreshState.FAILED -> "Guide failed"
+                        EpgRefreshState.CACHED_DATA_AVAILABLE -> "Guide cached"
+                    }
+                    Text(
+                        text = stateLine + " · " +
+                            "${status.loadedSources} ok · ${status.failedSources} failed" +
+                            (if (status.truncatedSources > 0) " · ${status.truncatedSources} truncated" else "") +
+                            " · ${status.matchedChannels} channels matched",
+                        fontSize = 11.sp,
+                        color = if (status.state == EpgRefreshState.FAILED) PaletteOffline else PaletteTextSecondary
+                    )
+                    // Expandable detail: one row per source, then unmatched ids
+                    // with their (unconfirmed) alternatives. Capped upstream.
+                    TextButton(
+                        onClick = { diagnosticsOpen = !diagnosticsOpen },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                    ) {
+                        Text(
+                            text = if (diagnosticsOpen) "Hide details" else "Details",
+                            fontSize = 11.sp,
+                            color = PaletteGold
+                        )
+                    }
+                    if (diagnosticsOpen) {
+                        if (status.sources.isEmpty()) {
+                            Text(
+                                text = "No source details yet — the guide refreshes on open.",
+                                fontSize = 11.sp,
+                                color = PaletteTextSecondary
+                            )
+                        }
+                        status.sources.forEach { source ->
+                            Column(Modifier.padding(start = 4.dp)) {
+                                Text(
+                                    text = when (source.status) {
+                                        EpgSourceStatus.LOADED -> "Loaded"
+                                        EpgSourceStatus.EMPTY -> "No data for this playlist"
+                                        EpgSourceStatus.TRUNCATED -> "Truncated (kept previous data)"
+                                        EpgSourceStatus.FAILED -> "Failed"
+                                    } + " · ${source.redactedUrl}" +
+                                        (source.programmeCount.takeIf { it > 0 }?.let { " · $it programmes" } ?: ""),
+                                    fontSize = 11.sp,
+                                    color = if (source.status == EpgSourceStatus.FAILED) PaletteOffline
+                                    else PaletteTextSecondary
+                                )
+                                source.errorMessage?.let { message ->
+                                    Text(
+                                        text = message,
+                                        fontSize = 10.sp,
+                                        color = PaletteOffline
+                                    )
+                                }
+                                source.unmatchedIds.forEach { unmatchedId ->
+                                    Text(
+                                        text = "No guide data for \"$unmatchedId\"",
+                                        fontSize = 10.sp,
+                                        color = PaletteTextSecondary
+                                    )
+                                    source.suggestions[unmatchedId]?.forEach { suggestion ->
+                                        Text(
+                                            text = "  possible match: $suggestion (unconfirmed)",
+                                            fontSize = 10.sp,
+                                            color = PaletteGold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if (isSaving) {
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -446,6 +554,7 @@ fun SettingsDialog(
                                     resumeOnLaunch = resumeOnLaunch,
                                     dataSaver = dataSaver,
                                     audioOnly = audioOnly,
+                                    epgLoose = epgLoose,
                                     epgUrl = epg
                                 )
                             )

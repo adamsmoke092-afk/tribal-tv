@@ -1,56 +1,11 @@
-package com.example.iptvapp
-
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Test
-
-class AutoEpgUrlTest {
-
-    @Test
-    fun `za country playlist pairs with the za guide`() {
-        assertEquals(
-            "https://iptv-org.github.io/epg/guides/za.xml.gz",
-            autoEpgUrlForPlaylist("https://iptv-org.github.io/iptv/countries/za.m3u")
-        )
-    }
-
-    @Test
-    fun `any country code pairs with its own guide`() {
-        assertEquals(
-            "https://iptv-org.github.io/epg/guides/uk.xml.gz",
-            autoEpgUrlForPlaylist("https://iptv-org.github.io/iptv/countries/uk.m3u")
-        )
-        assertEquals(
-            "https://iptv-org.github.io/epg/guides/us.xml.gz",
-            autoEpgUrlForPlaylist("https://iptv-org.github.io/iptv/countries/us.m3u")
-        )
-    }
-
-    @Test
-    fun `trailing query string is ignored`() {
-        assertEquals(
-            "https://iptv-org.github.io/epg/guides/za.xml.gz",
-            autoEpgUrlForPlaylist("https://iptv-org.github.io/iptv/countries/za.m3u?v=2")
-        )
-    }
-
-    @Test
-    fun `non-iptv-org playlist gets no auto guide`() {
-        assertNull(autoEpgUrlForPlaylist("http://myprovider.example.com/list.m3u"))
-        assertNull(autoEpgUrlForPlaylist("https://example.com/iptv/countries/uk.m3u"))
-    }
-
-    @Test
-    fun `iptv-org non-country playlist gets no auto guide`() {
-        // Categories/languages don't pair with a per-country guide.
-        assertNull(autoEpgUrlForPlaylist("https://iptv-org.github.io/iptv/categories/movies.m3u"))
-        assertNull(autoEpgUrlForPlaylist("https://iptv-org.github.io/iptv/index.country.m3u"))
-    }
-
-    @Test
-    fun `junk path segments cannot be spliced into the guide URL`() {
-        assertNull(autoEpgUrlForPlaylist("https://iptv-org.github.io/iptv/countries/../secret.m3u"))
-        assertNull(autoEpgUrlForPlaylist("https://iptv-org.github.io/iptv/countries/.m3u"))
-        assertNull(autoEpgUrlForPlaylist("https://iptv-org.github.io/iptv/countries/za.m3u.bak"))
-    }
-}
+// REMOVED (2026-10-31): the iptv-org country auto-pair
+// (autoEpgUrlForPlaylist, ".../iptv/countries/za.m3u" -> ".../epg/guides/za.xml.gz")
+// was withdrawn by user decision — its generated guide URLs proved unreliable,
+// and inferring a guide from a playlist URL's shape is the kind of silent
+// guessing the per-playlist EPG work removes.
+//
+// A playlist's guide now comes from its own `url-tvg` / `x-tvg-url` header
+// (see M3uHeaderTest) or from that playlist's manual override. Precedence and
+// origin tests live in EpgPrecedenceTest. This file is kept only so the
+// removal is visible in history without a deletion; it contains no tests and
+// runs nothing.

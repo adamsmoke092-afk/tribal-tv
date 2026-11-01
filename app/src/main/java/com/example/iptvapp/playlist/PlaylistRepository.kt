@@ -32,20 +32,28 @@ class PlaylistRepository(
         return refreshChannels(playlistUrl)
     }
 
-    suspend fun refreshChannels(playlistUrl: String): List<M3uChannel> = withContext(Dispatchers.IO) {
+    /**
+     * Fetches and caches a playlist, returning its channels AND the EPG
+     * sources it declares in its own header (url-tvg / x-tvg-url). The header
+     * is the playlist's own configuration, so callers persist it against that
+     * playlist's id.
+     */
+    suspend fun fetchPlaylist(playlistUrl: String): M3uPlaylist = withContext(Dispatchers.IO) {
         val text = fetchRawText(playlistUrl)
-        val channels = M3uPlaylistParser.parse(text)
+        val parsed = M3uPlaylistParser.parsePlaylist(text)
         // An empty result means the URL is wrong or the content isn't an
         // M3U. Replacing the cache with an empty table would wipe good
         // data for nothing — fail BEFORE touching Room. The settings
         // dialog relies on this to validate a new URL before persisting it.
-        if (channels.isEmpty()) {
+        if (parsed.channels.isEmpty()) {
             throw IllegalStateException("No channels found in that playlist")
         }
-        channelDao.replaceAll(channels.map { it.toEntity() })
+        channelDao.replaceAll(parsed.channels.map { it.toEntity() })
         onRefreshed()
-        channels
+        parsed
     }
+
+    suspend fun refreshChannels(playlistUrl: String): List<M3uChannel> = fetchPlaylist(playlistUrl).channels
 
     private fun fetchRawText(urlString: String): String {
         val connection = (URL(urlString).openConnection() as HttpURLConnection).apply {

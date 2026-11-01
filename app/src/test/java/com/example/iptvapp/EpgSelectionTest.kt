@@ -8,8 +8,18 @@ import org.junit.Test
 
 class EpgSelectionTest {
 
-    private fun p(start: Long, stop: Long, title: String) =
-        EpgProgramme(channelId = "c", startMs = start, stopMs = stop, title = title)
+    private fun p(
+        start: Long,
+        stop: Long,
+        title: String,
+        source: String = "guide-a"
+    ) = EpgProgramme(
+        source = source,
+        channelId = "c",
+        startMs = start,
+        stopMs = stop,
+        title = title
+    )
 
     @Test
     fun `picks the programme containing now and the next one after it`() {
@@ -70,5 +80,29 @@ class EpgSelectionTest {
         val nn = selectNowNext(emptyList(), nowMs = 12345)
         assertNull(nn.current)
         assertNull(nn.next)
+    }
+
+    // ---- two guides describing the same channel ----
+
+    @Test
+    fun `duplicate channel and start time across sources resolves deterministically`() {
+        val fromA = p(100, 200, "A-show", source = "guide-a")
+        val fromB = p(100, 200, "B-show", source = "guide-b")
+
+        // The lower source string wins the tie regardless of list order, so
+        // Now/Next cannot flip between runs.
+        assertEquals("A-show", selectNowNext(listOf(fromA, fromB), 150).current?.title)
+        assertEquals("A-show", selectNowNext(listOf(fromB, fromA), 150).current?.title)
+    }
+
+    @Test
+    fun `a second source can supply the next programme when the first has a gap`() {
+        val programmes = listOf(
+            p(0, 100, "A-show", source = "guide-a"),
+            p(200, 300, "B-show", source = "guide-b")
+        )
+        val nn = selectNowNext(programmes, nowMs = 150)
+        assertNull(nn.current) // both sources agree there is a gap
+        assertEquals("B-show", nn.next?.title)
     }
 }
