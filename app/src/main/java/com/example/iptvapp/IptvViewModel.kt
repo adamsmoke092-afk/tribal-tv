@@ -538,7 +538,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             // The effective source set before applying EPG-related draft
             // changes, so a whitespace-only or reordered override doesn't
             // force an unnecessary download.
-            val epgSourceSetBefore = settings.normalizedUrlSet(effectiveEpgUrls())
+            val epgSourceSetBefore = normalizedUrlSet(effectiveEpgUrls())
             if (draft.epgLoose != epgLoose) {
                 epgLoose = draft.epgLoose
                 settings.setEpgLooseMatching(draft.epgLoose)
@@ -555,7 +555,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 // or reordering of equivalent lists keep the same source set
                 // and fall through to the normal staleness window; the stored
                 // value and diagnostics origin are still updated correctly.
-                if (settings.normalizedUrlSet(effectiveEpgUrls()) != epgSourceSetBefore) {
+                if (normalizedUrlSet(effectiveEpgUrls()) != epgSourceSetBefore) {
                     settings.setLastEpgRefreshMs(0L)
                     nowNext = null
                     epgNeedsRefetch = true
