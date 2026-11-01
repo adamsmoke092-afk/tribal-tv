@@ -10,9 +10,9 @@ import androidx.media3.common.Player
 import com.example.iptvapp.epg.EpgRefreshResult
 import com.example.iptvapp.epg.EpgRefreshState
 import com.example.iptvapp.epg.EpgRepository
-import com.example.iptvapp.epg.EpgSourceOrigin
 import com.example.iptvapp.epg.EpgSourceResult
 import com.example.iptvapp.epg.NowNext
+import com.example.iptvapp.epg.epgRefreshState
 import com.example.iptvapp.epg.epgSourceKeys
 import com.example.iptvapp.playlist.AppDatabase
 import com.example.iptvapp.playlist.M3uChannel
@@ -238,8 +238,10 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
      * that playlist's manual override, else the guide URL its own M3U header
      * declares, else none. The two are never combined, so a failing manual
      * override cannot silently fall back to the playlist's URL.
+     *
+     * Internal rather than private so tests can assert precedence directly.
      */
-    private fun effectiveEpgUrls(): List<String> =
+    internal fun effectiveEpgUrls(): List<String> =
         effectiveEpgUrlsFor(epgManualOverride, epgHeaderUrl)
 
     /** Recomputes now/next for the selected channel's tvg-id. */
@@ -390,11 +392,25 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 // Re-read the playlist's own header so its declared guide
                 // stays current, then show the refreshed channels.
+                //
+                // Whether a fresh EPG download is warranted depends on the
+                // EFFECTIVE source (a manual override outranks the playlist
+                // header), not the header alone: with an override in force a
+                // changed header must NOT trigger a download of an unchanged
+                // manual guide, and adding/removing an override switches the
+                // source even when the header did not change.
+                val effectiveBefore = effectiveEpgUrls()
                 val playlist = repository.fetchPlaylist(playlistUrl)
-                playlistStore.setEpgHeaderUrl(activePlaylistId, playlist.epgUrls.joinToString(","))
-                epgHeaderUrl = playlist.epgUrls.joinToString(",")
+                val headerUrls = playlist.epgUrls.joinToString(",")
+                playlistStore.setEpgHeaderUrl(activePlaylistId, headerUrls)
+                epgHeaderUrl = headerUrls
                 updateChannels(playlist.channels)
                 loadError = null
+                // Force only when the source actually in use changed; otherwise
+                // fall through to the normal 6h stale-cache policy.
+                maybeRefreshEpg(
+                    force = shouldForceEpgRefresh(effectiveBefore, effectiveEpgUrls())
+                )
             } catch (e: Exception) {
                 loadError = "Refresh failed: ${e.message}"
             } finally {
@@ -519,6 +535,10 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 settings.setAudioOnly(audioOnly)
                 applyPlaybackPreferences(player, dataSaver, audioOnly)
             }
+            // The effective source set before applying EPG-related draft
+            // changes, so a whitespace-only or reordered override doesn't
+            // force an unnecessary download.
+            val epgSourceSetBefore = settings.normalizedUrlSet(effectiveEpgUrls())
             if (draft.epgLoose != epgLoose) {
                 epgLoose = draft.epgLoose
                 settings.setEpgLooseMatching(draft.epgLoose)
@@ -530,11 +550,16 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 // playlist's configuration is touched.
                 playlistStore.setEpgOverride(activePlaylistId, draft.epgUrl)
                 epgManualOverride = draft.epgUrl
-                // A new/cleared guide invalidates the cached freshness so the
-                // next launch refetches. Clearing it also blanks now/next.
-                settings.setLastEpgRefreshMs(0L)
-                nowNext = null
-                epgNeedsRefetch = true
+                // Only invalidate the cache and force a download when the
+                // effective source set actually changed. Whitespace-only edits
+                // or reordering of equivalent lists keep the same source set
+                // and fall through to the normal staleness window; the stored
+                // value and diagnostics origin are still updated correctly.
+                if (settings.normalizedUrlSet(effectiveEpgUrls()) != epgSourceSetBefore) {
+                    settings.setLastEpgRefreshMs(0L)
+                    nowNext = null
+                    epgNeedsRefetch = true
+                }
             }
             if (epgNeedsRefetch) maybeRefreshEpg(force = true)
             playlists = playlistStore.playlists()

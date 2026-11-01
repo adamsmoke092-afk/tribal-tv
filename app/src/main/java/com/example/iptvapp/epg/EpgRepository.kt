@@ -62,11 +62,16 @@ class EpgRepository(private val epgDao: EpgDao) {
         val now = System.currentTimeMillis()
         val windowStart = now - WINDOW_PAST_MS
         val windowEnd = now + WINDOW_FUTURE_MS
-        val sourceKeys = epgSourceKeys(playlistKey, guideUrls)
+        // Canonicalise once: trim, drop blanks, dedupe (order preserved). Every
+        // consumer — source keys, HTTP requests, cache lookups — uses this
+        // list, so whitespace-only differences never create duplicate downloads
+        // or duplicate cache rows.
+        val canonicalUrls = guideUrls.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val sourceKeys = epgSourceKeys(playlistKey, canonicalUrls)
         val isCandidate = epgCandidateIds(playlistIds)
 
-        val results = ArrayList<EpgSourceResult>(guideUrls.size)
-        for ((index, url) in guideUrls.withIndex()) {
+        val results = ArrayList<EpgSourceResult>(canonicalUrls.size)
+        for ((index, url) in canonicalUrls.withIndex()) {
             results += fetchAndStore(
                 sourceKey = sourceKeys[index],
                 guideUrl = url,

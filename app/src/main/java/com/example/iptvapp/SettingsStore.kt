@@ -183,3 +183,36 @@ fun effectiveEpgUrlsFor(manualOverride: String?, headerUrl: String?): List<Strin
     if (manual.isNotEmpty()) return manual
     return parseEpgUrls(headerUrl.orEmpty())
 }
+
+/**
+ * Whether a playlist refresh must FORCE a fresh guide download, decided on the
+ * source actually in force — not on the playlist's header alone.
+ *
+ * A manual override outranks the header, so:
+ *  - override in force + header changed -> false. The effective source is
+ *    still the same manual URL; re-downloading it would be pure waste.
+ *  - no override + header changed -> true. The guide genuinely moved.
+ *  - override added, cleared or edited -> true. The effective source changed.
+ *  - nothing changed -> false, and the caller falls through to its normal
+ *    staleness window rather than bypassing it.
+ *
+ * Order does not matter: every effective URL is fetched independently and the
+ * results are merged, so reordering the same URLs must not trigger a fresh
+ * download. Comparison is on normalized, distinct URL sets — adding, removing
+ * or changing any source (a string difference) changes the set and forces a
+ * refresh. URL casing is preserved: path segments and query values can be
+ * case-sensitive, so changing them changes the set. Pure — JVM unit-testable.
+ */
+fun shouldForceEpgRefresh(
+    effectiveBefore: List<String>,
+    effectiveAfter: List<String>
+): Boolean = normalizedUrlSet(effectiveBefore) != normalizedUrlSet(effectiveAfter)
+
+/** Normalises effective guide URLs to a de-duplicated set so that reordering
+ * the same URLs compares equal. Surrounding whitespace is trimmed and blanks
+ * are dropped, but URL casing is preserved because path segments and query
+ * values can be case-sensitive — changing them changes the set and forces a
+ * refresh. Callers already pass trimmed, non-blank lists from
+ * [effectiveEpgUrlsFor], but this pure helper tolerates anything. */
+internal fun normalizedUrlSet(urls: List<String>): Set<String> =
+    urls.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
