@@ -3,7 +3,9 @@ package com.example.iptvapp.movies
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material.icons.filled.ChevronRight
 import com.example.iptvapp.PaletteBackground
 import com.example.iptvapp.PaletteCard
 import com.example.iptvapp.PaletteGold
@@ -57,7 +58,7 @@ fun MoviesScreen(
     onMovieSelected: (VidSrcItem) -> Unit,
     onBack: () -> Unit
 ) {
-    val state by viewModel.uiState
+    val state = viewModel.uiState
 
     var isMoviesSelected by remember { mutableStateOf(state.selectedCategory == MoviesCategory.MOVIES) }
 
@@ -129,8 +130,7 @@ fun MoviesScreen(
                 Modifier
                     .fillMaxSize()
                     .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = state.error,
@@ -157,8 +157,7 @@ fun MoviesScreen(
                 Modifier
                     .fillMaxSize()
                     .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = if (isMoviesSelected) "No movies available" else "No TV shows available",
@@ -302,7 +301,7 @@ private fun MovieCard(item: VidSrcItem, onClick: () -> Unit) {
                 }
             }
             Icon(
-                imageVector = ChevronRight,
+                imageVector = TribalIcons.Next,
                 contentDescription = "Open",
                 tint = PaletteTextSecondary,
                 modifier = Modifier.size(20.dp)

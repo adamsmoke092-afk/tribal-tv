@@ -2,10 +2,7 @@ package com.example.iptvapp.movies
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.value
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -27,23 +24,6 @@ data class MoviesUiState(
     val error: String? = null,
     val selectedCategory: MoviesCategory = MoviesCategory.MOVIES
 ) {
-    fun copy(
-        movies: List<VidSrcItem> = this.movies,
-        tvShows: List<VidSrcItem> = this.tvShows,
-        isLoadingMovies: Boolean = this.isLoadingMovies,
-        isLoadingTvShows: Boolean = this.isLoadingTvShows,
-        isRefreshing: Boolean = this.isRefreshing,
-        moviePage: Int = this.moviePage,
-        tvPage: Int = this.tvPage,
-        moviePages: Int = this.moviePages,
-        tvPages: Int = this.tvPages,
-        error: String? = this.error,
-        selectedCategory: MoviesCategory = this.selectedCategory
-    ) = MoviesUiState(
-        movies, tvShows, isLoadingMovies, isLoadingTvShows, isRefreshing,
-        moviePage, tvPage, moviePages, tvPages, error, selectedCategory
-    )
-}
 
 /** Which category is currently displayed. */
 enum class MoviesCategory { MOVIES, TV_SHOWS }

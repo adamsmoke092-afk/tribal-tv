@@ -8,9 +8,10 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
 import com.example.iptvapp.R
 
@@ -28,11 +29,11 @@ import com.example.iptvapp.R
  * the activity. The WebView is paused and destroyed when the activity
  * finishes.
  */
-class VidSrcPlayerActivity : AppCompatActivity() {
+class VidSrcPlayerActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
     private var customView: View? = null
-    private var customViewCallback: WebView.CustomViewCallback? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     companion object {
         private const val EXTRA_EMBED_URL = "embed_url"
@@ -122,7 +123,7 @@ class VidSrcPlayerActivity : AppCompatActivity() {
             domStorageEnabled = true
             // Mixed content stays blocked — never allow HTTP resources
             // from an HTTPS page.
-            mixedContentMode = WebView.MIXED_CONTENT_NEVER_ALLOW
+            webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             // Disable file and content access — the page must not read
             // local files or expose content providers.
             setAllowFileAccess(false)
@@ -160,7 +161,7 @@ class VidSrcPlayerActivity : AppCompatActivity() {
 
         webView.webChromeClient = object : android.webkit.WebChromeClient() {
             // Full-screen video support.
-            override fun onShowCustomView(view: View?, callback: WebView.CustomViewCallback?) {
+            override fun onShowCustomView(view: View?, callback: WebChromeClient.CustomViewCallback?) {
                 customView = view
                 customViewCallback = callback
                 view?.let { v ->

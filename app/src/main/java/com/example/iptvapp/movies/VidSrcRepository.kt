@@ -11,8 +11,6 @@ import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import kotlin.Result
-import kotlin.Result.Failure
-import kotlin.Result.companion.success
 
 /**
  * Fetches the VidSrc latest movies and TV shows feeds over HTTPS.
@@ -31,9 +29,11 @@ import kotlin.Result.companion.success
  */
 class VidSrcRepository(private val dispatcher: CoroutineDispatcher = Dispatchers.IO) {
 
-    private const val BASE = "https://vidsrc.sh"
-    private const val CONNECT_TIMEOUT_MS = 15_000
-    private const val READ_TIMEOUT_MS = 15_000
+    companion object {
+        private const val BASE = "https://vidsrc.sh"
+        private const val CONNECT_TIMEOUT_MS = 15_000
+        private const val READ_TIMEOUT_MS = 15_000
+    }
 
     /**
      * Fetches page 1 of the latest movies feed.
@@ -68,7 +68,7 @@ class VidSrcRepository(private val dispatcher: CoroutineDispatcher = Dispatchers
 
             val responseCode = connection.responseCode
             if (responseCode < 200 || responseCode >= 300) {
-                return@withContext Failure(
+                return@withContext Result.failure<VidSrcFeed>(
                     Exception("HTTP $responseCode for $url")
                 )
             }
@@ -99,11 +99,11 @@ class VidSrcRepository(private val dispatcher: CoroutineDispatcher = Dispatchers
             }
             val pages = json.optInt("pages", 1)
 
-            success(VidSrcFeed(result = items, pages = pages))
+            Result.success(VidSrcFeed(result = items, pages = pages))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Failure(e)
+            Result.failure<VidSrcFeed>(e)
         } finally {
             reader?.use { } // close the reader
             connection?.disconnect()
