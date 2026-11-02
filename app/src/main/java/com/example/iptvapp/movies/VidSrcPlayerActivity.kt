@@ -93,7 +93,7 @@ class VidSrcPlayerActivity : ComponentActivity() {
         if (uri.host != "vidsrc.sh") return false
 
         // No user information (e.g. user@host).
-        if (uri.userInfo != null && uri.userInfo.isNotEmpty()) return false
+        if (uri.userInfo != null && uri.userInfo?.isNotEmpty() == true) return false
 
         // No explicit port (default HTTPS port only).
         if (uri.port != -1) return false
@@ -212,7 +212,9 @@ class VidSrcPlayerActivity : ComponentActivity() {
     override fun onBackPressed() {
         // Exit full-screen first if active, then finish.
         if (customView != null) {
-            onHideCustomView()
+            customViewCallback?.onCustomViewHidden()
+            customView = null
+            setFullScreen(false)
             return
         }
         if (webView.canGoBack()) {

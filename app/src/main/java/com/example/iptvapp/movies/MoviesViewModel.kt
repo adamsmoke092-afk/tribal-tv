@@ -47,7 +47,7 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
     private var movieJob: Job? = null
     private var tvJob: Job? = null
 
-    private fun setUiState(block: MoviesUiState.() -> MoviesUiState) {
+    private fun setUiState(block: (MoviesUiState) -> MoviesUiState) {
         _uiState.value = block(_uiState.value)
     }
 

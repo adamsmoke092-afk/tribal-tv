@@ -84,7 +84,6 @@ fun MoviesScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .statusBarsPadding(),
-            verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
                 Icon(
@@ -191,7 +190,7 @@ fun MoviesScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp),
+                                .padding(top = 4.dp, bottom = 4.dp),
                             horizontalArrangement = Arrangement.Center
                         ) {
                             TextButton(
@@ -210,7 +209,7 @@ fun MoviesScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 16.dp),
+                                .padding(top = 8.dp, bottom = 8.dp),
                             horizontalArrangement = Arrangement.Center
                         ) {
                             CircularProgressIndicator(color = PaletteGold)
@@ -277,7 +276,6 @@ private fun MovieCard(item: VidSrcItem, onClick: () -> Unit) {
             modifier = Modifier
                 .padding(8.dp)
                 .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
