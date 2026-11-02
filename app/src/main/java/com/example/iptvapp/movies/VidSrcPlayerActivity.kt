@@ -163,7 +163,7 @@ class VidSrcPlayerActivity : AppCompatActivity() {
             override fun onShowCustomView(view: View?, callback: WebView.CustomViewCallback?) {
                 customView = view
                 customViewCallback = callback
-                view?.let { v =>
+                view?.let { v ->
                     val decor = window.decorView
                     decor.findViewById<ViewGroup>(android.R.id.content)?.addView(v)
                 }
