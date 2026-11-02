@@ -3,7 +3,6 @@ package com.example.iptvapp.movies
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -17,13 +16,15 @@ import androidx.core.view.WindowCompat
 import com.example.iptvapp.R
 
 /**
- * Plays a VidSrc movie or TV embed in a WebView with strict security.
+ * Plays a VidSrc (vidsrc.wiki) movie or TV embed in a WebView with strict
+ * security.
  *
- * Only HTTPS embed URLs constructed by [VidSrcUrlBuilder] are accepted —
- * arbitrary URLs from the UI or feed are never loaded. JavaScript is
- * enabled (required by the embedded player) but no JavaScript interfaces
- * are exposed, file/content access is disabled, mixed content stays
- * blocked, and Safe Browsing is enabled where available.
+ * Only embed URLs that [VidSrcUrlBuilder] itself could have built are
+ * accepted (see [VidSrcUrlBuilder.isAllowedEmbedUrl]) — arbitrary URLs
+ * from the UI or network are never loaded. JavaScript is enabled (required
+ * by the embedded player) but no JavaScript interfaces are exposed,
+ * file/content access is disabled, mixed content stays blocked, and Safe
+ * Browsing is enabled where available.
  *
  * Full-screen video is supported via [WebChromeClient.onShowCustomView]
  * and [WebChromeClient.onHideCustomView]. Back navigation exits
@@ -41,8 +42,8 @@ class VidSrcPlayerActivity : ComponentActivity() {
 
         /**
          * Creates an intent to open a VidSrc embed URL. The URL must have
-         * been constructed by [VidSrcUrlBuilder.buildEmbedUrl] — callers
-         * should not pass arbitrary strings.
+         * been constructed by [VidSrcUrlBuilder] — callers should not pass
+         * arbitrary strings.
          */
         fun createIntent(context: Activity, embedUrl: String): Intent {
             return Intent(context, VidSrcPlayerActivity::class.java).apply {
@@ -60,9 +61,8 @@ class VidSrcPlayerActivity : ComponentActivity() {
             return
         }
 
-        // Reject any URL that wasn't constructed by VidSrcUrlBuilder:
-        // only https://vidsrc.sh/embed/{movie,tv}/{id} is allowed.
-        if (!isValidEmbedUrl(embedUrl)) {
+        // Reject any URL that wasn't constructed by VidSrcUrlBuilder.
+        if (!VidSrcUrlBuilder.isAllowedEmbedUrl(embedUrl)) {
             finish()
             return
         }
@@ -72,45 +72,6 @@ class VidSrcPlayerActivity : ComponentActivity() {
         webView = findViewById(R.id.webview)
         configureWebView(webView)
         webView.loadUrl(embedUrl)
-    }
-
-    /**
-     * Strictly validates that [url] is an HTTPS VidSrc embed URL. Any other
-     * scheme, host, or path is rejected.
-     *
-     * Validation uses [android.net.Uri] parsing rather than string
-     * prefix checks, so the URL structure is verified component by
-     * component: scheme, host, port, user info, path segments, query,
-     * and fragment.
-     */
-    private fun isValidEmbedUrl(url: String): Boolean {
-        val uri = Uri.parse(url)
-
-        // Scheme must be exactly HTTPS.
-        if (uri.scheme != "https") return false
-
-        // Host must be exactly vidsrc.sh.
-        if (uri.host != "vidsrc.sh") return false
-
-        // No user information (e.g. user@host).
-        if (!uri.userInfo.isNullOrEmpty()) return false
-
-        // No explicit port (default HTTPS port only).
-        if (uri.port != -1) return false
-
-        // No query parameters or fragment.
-        if (uri.query != null) return false
-        if (uri.fragment != null) return false
-
-        // Path must be exactly /embed/movie/{id} or /embed/tv/{id}.
-        val segments = uri.pathSegments
-        if (segments.size != 3) return false
-        if (segments[0] != "embed") return false
-        val mediaKind = segments[1]
-        if (mediaKind != "movie" && mediaKind != "tv") return false
-
-        // The ID must be a valid IMDb or TMDB ID.
-        return VidSrcUrlBuilder.isValidId(segments[2])
     }
 
     @SuppressLint("SetJavaScriptEnabled")

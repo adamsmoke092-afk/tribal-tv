@@ -1,5 +1,7 @@
 package com.example.iptvapp.movies
 
+import java.net.URI
+
 /**
  * Media type for VidSrc embed URLs.
  */
@@ -9,67 +11,58 @@ enum class MediaType {
 }
 
 /**
- * Builds VidSrc embed URLs from validated IMDb or TMDB IDs.
+ * Builds and validates VidSrc embed URLs.
  *
- * Never accepts an arbitrary URL from the UI — only a validated ID and a
- * media type. The embed URL is always constructed from the fixed HTTPS
- * VidSrc hostname and the ID, so no feed-supplied URL is ever trusted.
+ * vidsrc.wiki embeds take TMDB numeric IDs:
+ *  - movie:  https://vidsrc.wiki/embed/movie/{tmdbId}/
+ *  - TV:     https://vidsrc.wiki/embed/tv/{tmdbId}/{season}/{episode}/
  *
- * Validation rules:
- *  - IMDb IDs must match ^tt[0-9]+$
- *  - TMDB IDs must contain digits only
+ * URLs are always constructed here from a validated numeric ID (never from
+ * a feed-supplied string), and [isAllowedEmbedUrl] re-checks the exact
+ * shape before the player loads anything.
  */
 object VidSrcUrlBuilder {
 
-    private const val BASE_HOST = "https://vidsrc.sh"
+    private const val BASE_HOST = "https://vidsrc.wiki"
 
-    private val IMDB_ID_PATTERN = Regex("^tt[0-9]+$")
-    private val TMDB_ID_PATTERN = Regex("^[0-9]+$")
+    private val MOVIE_PATH = Regex("^/embed/movie/\\d+/?$")
+    private val TV_PATH = Regex("^/embed/tv/\\d+/\\d+/\\d+/?$")
 
-    /**
-     * Returns true when [id] is a valid IMDb ID (e.g. tt0111161).
-     */
-    fun isValidImdbId(id: String?): Boolean =
-        IMDB_ID_PATTERN.matches(id.orEmpty())
+    /** Builds a movie embed URL for [tmdbId]. */
+    fun buildMovieEmbedUrl(tmdbId: Int): String {
+        require(tmdbId > 0) { "Invalid TMDB movie id: $tmdbId" }
+        return "$BASE_HOST/embed/movie/$tmdbId/"
+    }
 
-    /**
-     * Returns true when [id] is a valid TMDB ID (digits only, e.g. 111161).
-     */
-    fun isValidTmdbId(id: String?): Boolean =
-        TMDB_ID_PATTERN.matches(id.orEmpty())
-
-    /**
-     * Returns true when [id] matches either the IMDb or TMDB pattern.
-     */
-    fun isValidId(id: String?): Boolean =
-        isValidImdbId(id) || isValidTmdbId(id)
-
-    /**
-     * Constructs an embed URL for the given [type] and [id].
-     *
-     * [id] must be a valid IMDb ID (tt...) or TMDB ID (digits). Throws
-     * [IllegalArgumentException] for any other input. Never constructs a
-     * URL from an arbitrary string supplied by the UI.
-     */
-    fun buildEmbedUrl(type: MediaType, id: String): String {
-        if (!isValidId(id)) {
-            throw IllegalArgumentException("Invalid VidSrc ID: '$id'. Expected IMDb (tt...) or TMDB (digits).")
-        }
-        return when (type) {
-            MediaType.MOVIE -> "$BASE_HOST/embed/movie/$id"
-            MediaType.TV -> "$BASE_HOST/embed/tv/$id"
-        }
+    /** Builds a TV episode embed URL for [tmdbId], [season] and [episode]. */
+    fun buildTvEmbedUrl(tmdbId: Int, season: Int, episode: Int): String {
+        require(tmdbId > 0) { "Invalid TMDB TV id: $tmdbId" }
+        require(season >= 1) { "Invalid season: $season" }
+        require(episode >= 1) { "Invalid episode: $episode" }
+        return "$BASE_HOST/embed/tv/$tmdbId/$season/$episode/"
     }
 
     /**
-     * Selects the best available ID from a [VidSrcItem]: IMDb ID when
-     * present and valid, otherwise the TMDB ID when present and valid.
-     * Returns null when neither is usable.
+     * Returns true only for URLs this app itself could have built: https,
+     * host exactly vidsrc.wiki, no user info / port / query / fragment, and
+     * exactly the movie or TV path shape.
+     *
+     * Uses [java.net.URI] (pure JVM) so it stays unit-testable without
+     * Robolectric and cannot be fooled by Android `Uri` quirks.
      */
-    fun bestId(item: VidSrcItem): String? =
-        when {
-            isValidImdbId(item.imdbId) -> item.imdbId
-            isValidTmdbId(item.tmdbId) -> item.tmdbId
-            else -> null
+    fun isAllowedEmbedUrl(url: String): Boolean {
+        val uri = try {
+            URI(url)
+        } catch (e: Exception) {
+            return false
         }
+        if (!uri.scheme.equals("https", ignoreCase = true)) return false
+        if (!uri.host.equals("vidsrc.wiki", ignoreCase = true)) return false
+        if (uri.userInfo != null) return false
+        if (uri.port != -1) return false
+        if (uri.rawQuery != null) return false
+        if (uri.rawFragment != null) return false
+        val path = uri.path ?: return false
+        return MOVIE_PATH.matches(path) || TV_PATH.matches(path)
+    }
 }
