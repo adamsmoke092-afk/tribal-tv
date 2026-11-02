@@ -144,7 +144,7 @@ class VidSrcPlayerActivity : AppCompatActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return true
-                return url !startsWith "https://"
+                return !url.startsWith("https://")
             }
 
             override fun onReceivedError(

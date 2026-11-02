@@ -124,7 +124,7 @@ fun MoviesScreen(
         }
 
         // ---- Error state ----
-        state.error?.let { error ->
+        if (state.error != null) {
             Column(
                 Modifier
                     .fillMaxSize()
@@ -133,7 +133,7 @@ fun MoviesScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = error,
+                    text = state.error,
                     color = PaletteOffline,
                     textAlign = TextAlign.Center
                 )
