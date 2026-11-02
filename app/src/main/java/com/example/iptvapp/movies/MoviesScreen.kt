@@ -42,7 +42,6 @@ import com.example.iptvapp.PaletteOffline
 import com.example.iptvapp.PaletteOutline
 import com.example.iptvapp.PaletteTextPrimary
 import com.example.iptvapp.PaletteTextSecondary
-import com.example.iptvapp.PaletteSurface
 import com.example.iptvapp.TribalIcons
 
 /**
@@ -179,7 +178,9 @@ fun MoviesScreen(
             ) {
                 items(
                     items = items,
-                    key = { it -> VidSrcUrlBuilder.bestId(it) ?: it.title ?: "" }
+                    key = { index, item ->
+                        VidSrcUrlBuilder.bestId(item) ?: "no-id:$index"
+                    }
                 ) { item ->
                     MovieCard(item = item, onClick = { onMovieSelected(item) })
                 }

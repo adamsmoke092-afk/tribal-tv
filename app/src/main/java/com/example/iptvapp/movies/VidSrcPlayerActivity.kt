@@ -3,7 +3,7 @@ package com.example.iptvapp.movies
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -75,10 +75,41 @@ class VidSrcPlayerActivity : AppCompatActivity() {
     /**
      * Strictly validates that [url] is an HTTPS VidSrc embed URL. Any other
      * scheme, host, or path is rejected.
+     *
+     * Validation uses [android.net.Uri] parsing rather than string
+     * prefix checks, so the URL structure is verified component by
+     * component: scheme, host, port, user info, path segments, query,
+     * and fragment.
      */
     private fun isValidEmbedUrl(url: String): Boolean {
-        return url.startsWith("https://vidsrc.sh/embed/movie/") ||
-            url.startsWith("https://vidsrc.sh/embed/tv/")
+        val uri = Uri.parse(url) ?: return false
+
+        // Scheme must be exactly HTTPS.
+        if (uri.scheme != "https") return false
+
+        // Host must be exactly vidsrc.sh.
+        if (uri.host != "vidsrc.sh") return false
+
+        // No user information (e.g. user@host).
+        if (uri.userInfo != null && uri.userInfo.isNotEmpty()) return false
+
+        // No explicit port (default HTTPS port only).
+        if (uri.port != -1) return false
+
+        // No query parameters or fragment.
+        if (uri.query != null) return false
+        if (uri.fragment != null) return false
+
+        // Path must be exactly /embed/movie/{id} or /embed/tv/{id}.
+        val segments = uri.pathSegments
+        if (segments.size != 3) return false
+        if (segments[0] != "embed") return false
+        val mediaKind = segments[1]
+        if (mediaKind != "movie" && mediaKind != "tv") return false
+
+        // The ID must be a valid IMDb or TMDB ID.
+        val id = segments[2]
+        return VidSrcUrlBuilder.isValidId(id)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -203,14 +234,5 @@ class VidSrcPlayerActivity : AppCompatActivity() {
         webView.stopLoading()
         webView.destroy()
         super.onDestroy()
-    }
-
-    /**
-     * Called by the ActivityResultLauncher from the caller Activity
-     * when IPTV playback should be paused before starting a movie.
-     * This activity itself does not pause IPTV — the caller does.
-     */
-    fun pauseIptvBeforeMovie() {
-        // No-op here: handled by MainActivity / MoviesScreen navigation.
     }
 }

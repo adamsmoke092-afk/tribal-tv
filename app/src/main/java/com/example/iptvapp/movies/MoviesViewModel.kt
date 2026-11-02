@@ -7,8 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.value
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.supervisorScope
 
 /**
  * UI state for the Movies screen. Holds movies, TV shows, loading,
@@ -83,10 +83,11 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
                     setUiState { it.copy(isLoadingMovies = false, error = "Failed to load movies") }
                     return@launch
                 }
-                movieIds = feed.result.mapNotNull { VidSrcUrlBuilder.bestId(it) }.toMutableSet()
+                val validMovies = feed.result.filter { VidSrcUrlBuilder.bestId(it) != null }
+                movieIds = validMovies.mapNotNull { VidSrcUrlBuilder.bestId(it) }.toMutableSet()
                 setUiState {
                     it.copy(
-                        movies = feed.result,
+                        movies = validMovies,
                         isLoadingMovies = false,
                         moviePage = 1,
                         moviePages = feed.pages.coerceAtLeast(1),
@@ -115,10 +116,11 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
                     setUiState { it.copy(isLoadingTvShows = false, error = "Failed to load TV shows") }
                     return@launch
                 }
-                tvIds = feed.result.mapNotNull { VidSrcUrlBuilder.bestId(it) }.toMutableSet()
+                val validTvShows = feed.result.filter { VidSrcUrlBuilder.bestId(it) != null }
+                tvIds = validTvShows.mapNotNull { VidSrcUrlBuilder.bestId(it) }.toMutableSet()
                 setUiState {
                     it.copy(
-                        tvShows = feed.result,
+                        tvShows = validTvShows,
                         isLoadingTvShows = false,
                         tvPage = 1,
                         tvPages = feed.pages.coerceAtLeast(1),
@@ -150,7 +152,9 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
                     setUiState { it.copy(isLoadingMovies = false, error = "Failed to load more movies") }
                     return@launch
                 }
-                val newItems = feed.result.filterNot { VidSrcUrlBuilder.bestId(it) in movieIds }
+                val newItems = feed.result
+                    .filter { VidSrcUrlBuilder.bestId(it) != null }
+                    .filterNot { VidSrcUrlBuilder.bestId(it) in movieIds }
                 if (newItems.isNotEmpty()) {
                     newItems.mapNotNull { VidSrcUrlBuilder.bestId(it) }.forEach { movieIds.add(it) }
                 }
@@ -188,7 +192,9 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
                     setUiState { it.copy(isLoadingTvShows = false, error = "Failed to load more TV shows") }
                     return@launch
                 }
-                val newItems = feed.result.filterNot { VidSrcUrlBuilder.bestId(it) in tvIds }
+                val newItems = feed.result
+                    .filter { VidSrcUrlBuilder.bestId(it) != null }
+                    .filterNot { VidSrcUrlBuilder.bestId(it) in tvIds }
                 if (newItems.isNotEmpty()) {
                     newItems.mapNotNull { VidSrcUrlBuilder.bestId(it) }.forEach { tvIds.add(it) }
                 }

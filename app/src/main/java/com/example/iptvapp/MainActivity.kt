@@ -15,6 +15,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
+import com.example.iptvapp.movies.MoviesViewModel
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +51,10 @@ class MainActivity : ComponentActivity() {
     // Owns all app data + screen state; survives Activity recreation and
     // builds its stores off the main thread (see IptvViewModel).
     private val viewModel: IptvViewModel by viewModels()
+
+    // Owns all Movies screen state; survives Activity recreation and is
+    // cleared by the ViewModelStore when the Activity is destroyed.
+    private val moviesViewModel: MoviesViewModel by viewModels()
 
     // Set from onPictureInPictureModeChanged; read in setContent so the
     // Compose tree recomposes when PiP mode changes.
@@ -112,6 +117,7 @@ class MainActivity : ComponentActivity() {
                         isInPip = isInPip.value,
                         onOpenMovies = { /* handled by navigation state */ },
                         onMovieBack = { /* handled by navigation state */ },
+                        moviesViewModel = moviesViewModel,
                         onMovieSelected = { item ->
                             val id = com.example.iptvapp.movies.VidSrcUrlBuilder.bestId(item)
                             if (id != null) {

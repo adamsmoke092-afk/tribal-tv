@@ -32,11 +32,13 @@ fun IptvApp(
     isInPip: Boolean,
     onOpenMovies: () -> Unit,
     onMovieBack: () -> Unit,
+    moviesViewModel: MoviesViewModel,
     onMovieSelected: (com.example.iptvapp.movies.VidSrcItem) -> Unit
 ) {
     // Movies screen state — local to this composable, never in IptvViewModel.
+    // The MoviesViewModel itself is Activity-scoped (created via
+    // ViewModelProvider in MainActivity) and passed in as a parameter.
     var showMovies by remember { mutableStateOf(false) }
-    val moviesViewModel = remember { MoviesViewModel() }
 
     // Once channels are available, attach to the already-playing session or
     // resume the last channel. Keyed on channels so it fires when the list

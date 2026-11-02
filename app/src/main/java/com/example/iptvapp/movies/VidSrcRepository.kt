@@ -1,5 +1,6 @@
 package com.example.iptvapp.movies
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -99,6 +100,8 @@ class VidSrcRepository(private val dispatcher: CoroutineDispatcher = Dispatchers
             val pages = json.optInt("pages", 1)
 
             success(VidSrcFeed(result = items, pages = pages))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Failure(e)
         } finally {
