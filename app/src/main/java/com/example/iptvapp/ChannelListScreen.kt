@@ -94,6 +94,7 @@ fun ChannelListScreen(
     onChannelSelected: (M3uChannel) -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenMovies: () -> Unit,
     onPlaySequenceChanged: (List<M3uChannel>) -> Unit
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -189,6 +190,13 @@ fun ChannelListScreen(
                     Icon(
                         imageVector = TribalIcons.Settings,
                         contentDescription = "Settings",
+                        tint = PaletteTextPrimary
+                    )
+                }
+                IconButton(onClick = onOpenMovies) {
+                    Icon(
+                        imageVector = TribalIcons.Movies,
+                        contentDescription = "Movies",
                         tint = PaletteTextPrimary
                     )
                 }

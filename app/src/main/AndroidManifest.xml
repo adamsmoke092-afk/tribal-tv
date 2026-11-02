@@ -45,6 +45,14 @@
             </intent-filter>
         </activity>
 
+        <!-- VidSrc movie / TV embed player. Not exported — only launched
+             internally from the Movies screen. WebView loads only HTTPS
+             VidSrc embed URLs constructed by VidSrcUrlBuilder. -->
+        <activity
+            android:name=".movies.VidSrcPlayerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize" />
+
         <!-- The media3 session service. SessionToken refuses to bind without
              the MediaSessionService intent-filter action; the
              foregroundServiceType is what lets playback continue in the

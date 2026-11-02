@@ -34,6 +34,28 @@ object TribalIcons {
     val Refresh = Icons.Filled.Refresh
     val Star = Icons.Filled.Star
 
+    /** The movie / play icon — drawn as a custom vector since material-icons-core has no movie icon. */
+    val Movies: ImageVector = ImageVector.Builder(
+        name = "Movies",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(fill = SolidColor(Color.White)) {
+            // Play triangle inside a rounded rectangle (movie poster shape).
+            moveTo(7.5f, 5f)
+            lineTo(7.5f, 19f)
+            lineTo(16.5f, 12f)
+            close()
+            moveTo(4f, 4f)
+            lineTo(20f, 4f)
+            lineTo(20f, 20f)
+            lineTo(4f, 20f)
+            close()
+        }
+    }.build()
+
     /** Material navigate_before — a solid left chevron. */
     val Prev: ImageVector = ImageVector.Builder(
         name = "Prev",
