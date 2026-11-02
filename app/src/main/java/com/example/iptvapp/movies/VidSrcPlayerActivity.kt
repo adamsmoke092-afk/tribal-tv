@@ -129,7 +129,7 @@ class VidSrcPlayerActivity : ComponentActivity() {
             setAllowFileAccess(false)
             setAllowContentAccess(false)
             setAllowFileAccessFromFileURLs(false)
-            setUniversalAccessFromFileURLs(false)
+            setAllowUniversalAccessFromFileURLs(false)
             // Safe Browsing where available (API 26+).
             safeBrowsingEnabled = true
             // Do NOT spoof the user agent — send the default.

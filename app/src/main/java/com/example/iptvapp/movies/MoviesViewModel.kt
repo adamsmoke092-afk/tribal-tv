@@ -25,6 +25,8 @@ data class MoviesUiState(
     val selectedCategory: MoviesCategory = MoviesCategory.MOVIES
 ) {
 
+}
+
 /** Which category is currently displayed. */
 enum class MoviesCategory { MOVIES, TV_SHOWS }
 
