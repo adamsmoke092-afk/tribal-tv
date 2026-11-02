@@ -35,7 +35,7 @@ fun IptvApp(
     onOpenMovies: () -> Unit,
     onMovieBack: () -> Unit,
     moviesViewModel: MoviesViewModel,
-    onMovieSelected: (com.example.iptvapp.movies.VidSrcItem) -> Unit
+    onMovieSelected: (com.example.iptvapp.movies.VidSrcItem, com.example.iptvapp.movies.MediaType) -> Unit
 ) {
     // Movies screen state — local to this composable, never in IptvViewModel.
     // The MoviesViewModel itself is Activity-scoped (created via
@@ -66,10 +66,10 @@ fun IptvApp(
     if (showMovies) {
         MoviesScreen(
             viewModel = moviesViewModel,
-            onMovieSelected = { item ->
+            onMovieSelected = { item, mediaType ->
                 // Pause IPTV before starting a movie to prevent overlapping audio.
                 vm.back(player)
-                onMovieSelected(item)
+                onMovieSelected(item, mediaType)
             },
             onBack = {
                 showMovies = false

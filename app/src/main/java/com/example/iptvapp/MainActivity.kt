@@ -118,13 +118,10 @@ class MainActivity : ComponentActivity() {
                         onOpenMovies = { /* handled by navigation state */ },
                         onMovieBack = { /* handled by navigation state */ },
                         moviesViewModel = moviesViewModel,
-                        onMovieSelected = { item ->
+                        onMovieSelected = { item, mediaType ->
                             val id = com.example.iptvapp.movies.VidSrcUrlBuilder.bestId(item)
                             if (id != null) {
-                                val embedUrl = com.example.iptvapp.movies.VidSrcUrlBuilder.buildEmbedUrl(
-                                    com.example.iptvapp.movies.MediaType.MOVIE,
-                                    id
-                                )
+                                val embedUrl = com.example.iptvapp.movies.VidSrcUrlBuilder.buildEmbedUrl(mediaType, id)
                                 startActivity(
                                     com.example.iptvapp.movies.VidSrcPlayerActivity.createIntent(this@MainActivity, embedUrl)
                                 )

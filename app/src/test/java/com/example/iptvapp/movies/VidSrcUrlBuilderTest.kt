@@ -4,7 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.json.JSONObject
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 class VidSrcUrlBuilderTest {
 
@@ -141,12 +143,19 @@ class VidSrcUrlBuilderTest {
     }
 }
 
-/** JSON parsing tests for VidSrc feed responses. */
+/**
+ * Parsing tests for the real [VidSrcRepository.parseFeed]. Run under
+ * Robolectric so `org.json` is the real implementation rather than the
+ * mockable android.jar stub (which throws "not mocked" in plain JVM
+ * unit tests).
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class VidSrcFeedParsingTest {
 
     @Test
     fun `feed with full items parses correctly`() {
-        val json = JSONObject(
+        val feed = VidSrcRepository.parseFeed(
             """
             {
               "result": [
@@ -165,51 +174,62 @@ class VidSrcFeedParsingTest {
             """.trimIndent()
         )
 
-        val resultArray = json.optJSONArray("result") ?: org.json.JSONArray()
-        assertEquals(1, resultArray.length())
-        val obj = resultArray.optJSONObject(0)!!
-        assertEquals("tt0111161", obj.optString("imdb_id"))
-        assertEquals("111161", obj.optString("tmdb_id"))
-        assertEquals("The Shawshank Redemption", obj.optString("title"))
-        assertEquals("1080p", obj.optString("quality"))
-        assertEquals(5, json.optInt("pages", 1))
+        assertEquals(1, feed.result.size)
+        val item = feed.result.first()
+        assertEquals("tt0111161", item.imdbId)
+        assertEquals("111161", item.tmdbId)
+        assertEquals("The Shawshank Redemption", item.title)
+        assertEquals("1080p", item.quality)
+        assertEquals("2020-01-01", item.timeAdded)
+        assertEquals(5, feed.pages)
     }
 
     @Test
     fun `feed with missing optional fields handles gracefully`() {
-        val json = JSONObject(
+        val feed = VidSrcRepository.parseFeed(
             """
             {
-              "result": [
-                {
-                  "title": "Movie with minimal data"
-                }
-              ],
+              "result": [ { "title": "Movie with minimal data" } ],
               "pages": 1
             }
             """.trimIndent()
         )
 
-        val resultArray = json.optJSONArray("result") ?: org.json.JSONArray()
-        assertEquals(1, resultArray.length())
-        val obj = resultArray.optJSONObject(0)!!
-        assertEquals("Movie with minimal data", obj.optString("title"))
-        assertEquals("", obj.optString("imdb_id", ""))
-        assertEquals("", obj.optString("tmdb_id", ""))
-        assertEquals(1, json.optInt("pages", 1))
+        assertEquals(1, feed.result.size)
+        val item = feed.result.first()
+        assertEquals("Movie with minimal data", item.title)
+        assertEquals(null, item.imdbId)
+        assertEquals(null, item.tmdbId)
+        assertEquals(null, item.quality)
+        assertEquals(1, feed.pages)
+    }
+
+    @Test
+    fun `json null fields are treated as absent`() {
+        val feed = VidSrcRepository.parseFeed(
+            """
+            {
+              "result": [ { "imdb_id": null, "quality": null, "title": "X" } ],
+              "pages": 1
+            }
+            """.trimIndent()
+        )
+        assertEquals(1, feed.result.size)
+        assertEquals(null, feed.result.first().imdbId)
+        assertEquals(null, feed.result.first().quality)
+        assertEquals("X", feed.result.first().title)
     }
 
     @Test
     fun `empty result array is valid`() {
-        val json = JSONObject(
-            """
-            {
-              "result": [],
-              "pages": 1
-            }
-            """.trimIndent()
-        )
-        val resultArray = json.optJSONArray("result") ?: org.json.JSONArray()
-        assertEquals(0, resultArray.length())
+        val feed = VidSrcRepository.parseFeed("""{ "result": [], "pages": 1 }""")
+        assertTrue(feed.result.isEmpty())
+        assertEquals(1, feed.pages)
+    }
+
+    @Test
+    fun `missing pages defaults to one`() {
+        val feed = VidSrcRepository.parseFeed("""{ "result": [] }""")
+        assertEquals(1, feed.pages)
     }
 }

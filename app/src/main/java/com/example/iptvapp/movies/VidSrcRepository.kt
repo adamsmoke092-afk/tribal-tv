@@ -15,12 +15,11 @@ import kotlin.Result
 /**
  * Fetches the VidSrc latest movies and TV shows feeds over HTTPS.
  *
- * All network I/O runs off the main thread (caller must invoke from a
- * coroutine with Dispatchers.IO, or this class can be called with
- * withContext(Dispatchers.IO)). Each feed request uses bounded timeouts,
- * closes its streams, and disconnects on completion or failure. Malformed
- * JSON and missing fields are handled gracefully — missing optional
- * fields simply yield null.
+ * All network I/O runs off the main thread: the caller invokes from a
+ * coroutine and [fetchFeed] hops to [dispatcher]. Each feed request uses
+ * bounded timeouts, closes its streams, and disconnects on completion or
+ * failure. Malformed JSON and missing fields are handled gracefully —
+ * absent, JSON-null, or blank optional fields become null.
  *
  * Duplicate entries are avoided: each page request returns its own list,
  * and the caller (ViewModel) is responsible for deduping across pages by
@@ -33,24 +32,62 @@ class VidSrcRepository(private val dispatcher: CoroutineDispatcher = Dispatchers
         private const val BASE = "https://vidsrc.sh"
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 15_000
+
+        /**
+         * Parses a VidSrc feed JSON body into a [VidSrcFeed]. Pure — no
+         * I/O — so it can be unit-tested directly.
+         *
+         * @throws org.json.JSONException when [json] is not valid JSON.
+         */
+        fun parseFeed(json: String): VidSrcFeed {
+            val root = JSONObject(json)
+            val resultArray = root.optJSONArray("result") ?: JSONArray()
+            val items = ArrayList<VidSrcItem>(resultArray.length())
+            for (i in 0 until resultArray.length()) {
+                val obj = resultArray.optJSONObject(i) ?: continue
+                items.add(
+                    VidSrcItem(
+                        imdbId = obj.optNonBlank("imdb_id"),
+                        tmdbId = obj.optNonBlank("tmdb_id"),
+                        title = obj.optNonBlank("title"),
+                        embedUrl = obj.optNonBlank("embed_url"),
+                        embedUrlTmdb = obj.optNonBlank("embed_url_tmdb"),
+                        quality = obj.optNonBlank("quality"),
+                        timeAdded = obj.optNonBlank("time_added")
+                    )
+                )
+            }
+            return VidSrcFeed(result = items, pages = root.optInt("pages", 1))
+        }
+
+        /**
+         * Reads [key] as a trimmed string, returning null when it is
+         * absent, JSON null, the literal string "null", or blank.
+         *
+         * Deliberately avoids `optString(name, null)`: the Java fallback
+         * parameter is a non-null String, so passing null yields a
+         * "Nothing? vs String" type warning — and `optString(name,
+         * fallback)` returns the literal "null" for a present JSON null.
+         */
+        private fun JSONObject.optNonBlank(key: String): String? {
+            if (!has(key) || isNull(key)) return null
+            val value = optString(key).trim()
+            return value.takeIf { it.isNotEmpty() && it != "null" }
+        }
     }
 
-    /**
-     * Fetches page 1 of the latest movies feed.
-     */
+    /** Fetches one page of the latest movies feed. */
     suspend fun fetchLatestMovies(page: Int = 1): Result<VidSrcFeed> =
         fetchFeed("$BASE/movies/latest/page-$page.json")
 
-    /**
-     * Fetches page 1 of the latest TV shows feed.
-     */
+    /** Fetches one page of the latest TV shows feed. */
     suspend fun fetchLatestTvShows(page: Int = 1): Result<VidSrcFeed> =
         fetchFeed("$BASE/tvshows/latest/page-$page.json")
 
     /**
      * Fetches a single VidSrc feed page, parses the JSON, and returns a
      * [VidSrcFeed]. Network failures, HTTP errors, and malformed JSON are
-     * all captured as [Failure].
+     * all captured as [Result.failure].
      */
     private suspend fun fetchFeed(url: String): Result<VidSrcFeed> = withContext(dispatcher) {
         var connection: HttpURLConnection? = null
@@ -82,30 +119,13 @@ class VidSrcRepository(private val dispatcher: CoroutineDispatcher = Dispatchers
                 body.append('\n')
             }
 
-            val json = JSONObject(body.toString())
-            val resultArray = json.optJSONArray("result") ?: JSONArray()
-            val items = mutableListOf<VidSrcItem>()
-            for (i in 0 until resultArray.length()) {
-                val obj = resultArray.optJSONObject(i) ?: continue
-                items.add(VidSrcItem(
-                    imdbId = obj.optString("imdb_id", null).takeIf { it.isNotBlank() },
-                    tmdbId = obj.optString("tmdb_id", null).takeIf { it.isNotBlank() },
-                    title = obj.optString("title", null).takeIf { it.isNotBlank() },
-                    embedUrl = obj.optString("embed_url", null).takeIf { it.isNotBlank() },
-                    embedUrlTmdb = obj.optString("embed_url_tmdb", null).takeIf { it.isNotBlank() },
-                    quality = obj.optString("quality", null).takeIf { it.isNotBlank() },
-                    timeAdded = obj.optString("time_added", null).takeIf { it.isNotBlank() }
-                ))
-            }
-            val pages = json.optInt("pages", 1)
-
-            Result.success(VidSrcFeed(result = items, pages = pages))
+            Result.success(parseFeed(body.toString()))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Result.failure<VidSrcFeed>(e)
         } finally {
-            reader?.use { } // close the reader
+            reader?.use { }
             connection?.disconnect()
         }
     }

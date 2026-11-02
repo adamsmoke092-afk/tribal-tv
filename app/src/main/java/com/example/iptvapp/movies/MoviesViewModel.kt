@@ -16,16 +16,13 @@ data class MoviesUiState(
     val tvShows: List<VidSrcItem> = emptyList(),
     val isLoadingMovies: Boolean = false,
     val isLoadingTvShows: Boolean = false,
-    val isRefreshing: Boolean = false,
     val moviePage: Int = 1,
     val tvPage: Int = 1,
     val moviePages: Int = 1,
     val tvPages: Int = 1,
     val error: String? = null,
     val selectedCategory: MoviesCategory = MoviesCategory.MOVIES
-) {
-
-}
+)
 
 /** Which category is currently displayed. */
 enum class MoviesCategory { MOVIES, TV_SHOWS }
@@ -35,7 +32,8 @@ enum class MoviesCategory { MOVIES, TV_SHOWS }
  * movie state lives in the IPTV ViewModel.
  *
  * Network calls run on Dispatchers.IO via viewModelScope. Duplicate
- * entries across pages are avoided by deduping on IMDb/TMDB ID.
+ * entries are avoided both within a page (distinctBy ID) and across
+ * pages (the accumulated id sets).
  */
 class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepository()) : ViewModel() {
 
@@ -52,6 +50,19 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
     }
 
     /**
+     * Loads the selected category the first time the screen appears.
+     * No-op when that category already has items or a load is in flight.
+     */
+    fun ensureLoaded() {
+        when (_uiState.value.selectedCategory) {
+            MoviesCategory.MOVIES ->
+                if (_uiState.value.movies.isEmpty() && !_uiState.value.isLoadingMovies) refreshMovies()
+            MoviesCategory.TV_SHOWS ->
+                if (_uiState.value.tvShows.isEmpty() && !_uiState.value.isLoadingTvShows) refreshTvShows()
+        }
+    }
+
+    /**
      * Loads page 1 of the latest movies feed. Replaces any existing list.
      */
     fun refreshMovies() {
@@ -65,7 +76,9 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
                     setUiState { it.copy(isLoadingMovies = false, error = "Failed to load movies") }
                     return@launch
                 }
-                val validMovies = feed.result.filter { VidSrcUrlBuilder.bestId(it) != null }
+                val validMovies = feed.result
+                    .filter { VidSrcUrlBuilder.bestId(it) != null }
+                    .distinctBy { VidSrcUrlBuilder.bestId(it) }
                 movieIds = validMovies.mapNotNull { VidSrcUrlBuilder.bestId(it) }.toMutableSet()
                 setUiState {
                     it.copy(
@@ -98,7 +111,9 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
                     setUiState { it.copy(isLoadingTvShows = false, error = "Failed to load TV shows") }
                     return@launch
                 }
-                val validTvShows = feed.result.filter { VidSrcUrlBuilder.bestId(it) != null }
+                val validTvShows = feed.result
+                    .filter { VidSrcUrlBuilder.bestId(it) != null }
+                    .distinctBy { VidSrcUrlBuilder.bestId(it) }
                 tvIds = validTvShows.mapNotNull { VidSrcUrlBuilder.bestId(it) }.toMutableSet()
                 setUiState {
                     it.copy(
@@ -136,6 +151,7 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
                 }
                 val newItems = feed.result
                     .filter { VidSrcUrlBuilder.bestId(it) != null }
+                    .distinctBy { VidSrcUrlBuilder.bestId(it) }
                     .filterNot { VidSrcUrlBuilder.bestId(it) in movieIds }
                 if (newItems.isNotEmpty()) {
                     newItems.mapNotNull { VidSrcUrlBuilder.bestId(it) }.forEach { movieIds.add(it) }
@@ -176,6 +192,7 @@ class MoviesViewModel(private val repository: VidSrcRepository = VidSrcRepositor
                 }
                 val newItems = feed.result
                     .filter { VidSrcUrlBuilder.bestId(it) != null }
+                    .distinctBy { VidSrcUrlBuilder.bestId(it) }
                     .filterNot { VidSrcUrlBuilder.bestId(it) in tvIds }
                 if (newItems.isNotEmpty()) {
                     newItems.mapNotNull { VidSrcUrlBuilder.bestId(it) }.forEach { tvIds.add(it) }

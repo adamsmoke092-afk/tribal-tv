@@ -7,11 +7,11 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.WebChromeClient
 import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
 import com.example.iptvapp.R
@@ -26,9 +26,9 @@ import com.example.iptvapp.R
  * blocked, and Safe Browsing is enabled where available.
  *
  * Full-screen video is supported via [WebChromeClient.onShowCustomView]
- * and [onHideCustomView]. Back navigation exits full-screen or finishes
- * the activity. The WebView is paused and destroyed when the activity
- * finishes.
+ * and [WebChromeClient.onHideCustomView]. Back navigation exits
+ * full-screen or finishes the activity. The WebView is paused and
+ * destroyed when the activity finishes.
  */
 class VidSrcPlayerActivity : ComponentActivity() {
 
@@ -84,7 +84,7 @@ class VidSrcPlayerActivity : ComponentActivity() {
      * and fragment.
      */
     private fun isValidEmbedUrl(url: String): Boolean {
-        val uri = Uri.parse(url) ?: return false
+        val uri = Uri.parse(url)
 
         // Scheme must be exactly HTTPS.
         if (uri.scheme != "https") return false
@@ -93,7 +93,7 @@ class VidSrcPlayerActivity : ComponentActivity() {
         if (uri.host != "vidsrc.sh") return false
 
         // No user information (e.g. user@host).
-        if (uri.userInfo != null && uri.userInfo?.isNotEmpty() == true) return false
+        if (!uri.userInfo.isNullOrEmpty()) return false
 
         // No explicit port (default HTTPS port only).
         if (uri.port != -1) return false
@@ -110,21 +110,19 @@ class VidSrcPlayerActivity : ComponentActivity() {
         if (mediaKind != "movie" && mediaKind != "tv") return false
 
         // The ID must be a valid IMDb or TMDB ID.
-        val id = segments[2]
-        return VidSrcUrlBuilder.isValidId(id)
+        return VidSrcUrlBuilder.isValidId(segments[2])
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(webView: WebView) {
-        val settings = webView.settings
-        with(settings) {
+        with(webView.settings) {
             // Required by the embedded player.
             javaScriptEnabled = true
             // Required for some player features.
             domStorageEnabled = true
             // Mixed content stays blocked — never allow HTTP resources
             // from an HTTPS page.
-            webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             // Disable file and content access — the page must not read
             // local files or expose content providers.
             setAllowFileAccess(false)
@@ -146,7 +144,7 @@ class VidSrcPlayerActivity : ComponentActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return true
-                return url?.startsWith("https://") != true
+                return !url.startsWith("https://")
             }
 
             override fun onReceivedError(
@@ -160,33 +158,52 @@ class VidSrcPlayerActivity : ComponentActivity() {
             }
         }
 
-        webView.webChromeClient = object : android.webkit.WebChromeClient() {
+        webView.webChromeClient = object : WebChromeClient() {
             // Full-screen video support.
             override fun onShowCustomView(view: View?, callback: WebChromeClient.CustomViewCallback?) {
-                customView = view
                 customViewCallback = callback
-                view?.let { v ->
-                    val decor = window.decorView
-                    decor.findViewById<ViewGroup>(android.R.id.content)?.addView(v)
+                if (view == null) {
+                    // Nothing to show — tell the page it can leave full-screen.
+                    customViewCallback?.onCustomViewHidden()
+                    customViewCallback = null
+                    return
                 }
+                customView = view
+                window.decorView
+                    .findViewById<ViewGroup>(android.R.id.content)
+                    ?.addView(view)
                 setFullScreen(true)
             }
 
             override fun onHideCustomView() {
-                customView?.let { v ->
-                    val decor = window.decorView
-                    decor.findViewById<ViewGroup>(android.R.id.content)?.removeView(v)
-                }
-                customView = null
-                customViewCallback?.onCustomViewHidden()
-                customViewCallback = null
-                setFullScreen(false)
+                exitFullScreen()
             }
         }
     }
 
+    /**
+     * Single teardown path for full-screen video: removes the custom view,
+     * clears state, notifies the page, and restores the system bars.
+     *
+     * State is cleared *before* the callback fires so a synchronous
+     * onHideCustomView callback cannot re-enter this method with stale
+     * state.
+     */
+    private fun exitFullScreen() {
+        customView?.let { v ->
+            window.decorView
+                .findViewById<ViewGroup>(android.R.id.content)
+                ?.removeView(v)
+        }
+        customView = null
+        val callback = customViewCallback
+        customViewCallback = null
+        callback?.onCustomViewHidden()
+        setFullScreen(false)
+    }
+
     private fun showError(message: String) {
-        webView.visibility = android.view.View.GONE
+        webView.visibility = View.GONE
         val errorView = android.widget.TextView(this)
         errorView.text = message
         errorView.setTextColor(0xFFF2F2F2.toInt())
@@ -212,12 +229,10 @@ class VidSrcPlayerActivity : ComponentActivity() {
     override fun onBackPressed() {
         // Exit full-screen first if active, then finish.
         if (customView != null) {
-            customViewCallback?.onCustomViewHidden()
-            customView = null
-            setFullScreen(false)
+            exitFullScreen()
             return
         }
-        if (webView.canGoBack()) {
+        if (::webView.isInitialized && webView.canGoBack()) {
             webView.goBack()
             return
         }
@@ -226,17 +241,19 @@ class VidSrcPlayerActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        webView.onPause()
+        if (::webView.isInitialized) webView.onPause()
     }
 
     override fun onResume() {
         super.onResume()
-        webView.onResume()
+        if (::webView.isInitialized) webView.onResume()
     }
 
     override fun onDestroy() {
-        webView.stopLoading()
-        webView.destroy()
+        if (::webView.isInitialized) {
+            webView.stopLoading()
+            webView.destroy()
+        }
         super.onDestroy()
     }
 }

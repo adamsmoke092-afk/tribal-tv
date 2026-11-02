@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,10 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -51,22 +47,24 @@ import com.example.iptvapp.TribalIcons
  * VidSrc. Strict black/gold/gray palette matching the rest of the app.
  *
  * Two categories (Movies / TV Shows) switch instantly; each maintains its
- * own list, page, and loading state via [MoviesViewModel].
+ * own list, page, and loading state via [MoviesViewModel]. The selected
+ * category lives only in the ViewModel — this screen holds no duplicate
+ * state.
  */
 @Composable
 fun MoviesScreen(
     viewModel: MoviesViewModel,
-    onMovieSelected: (VidSrcItem) -> Unit,
+    onMovieSelected: (VidSrcItem, MediaType) -> Unit,
     onBack: () -> Unit
 ) {
     val state = viewModel.uiState
 
-    var isMoviesSelected by remember { mutableStateOf(state.selectedCategory == MoviesCategory.MOVIES) }
+    // Single source of truth: the ViewModel owns the selected category.
+    val isMoviesSelected = state.selectedCategory == MoviesCategory.MOVIES
+    val mediaType = if (isMoviesSelected) MediaType.MOVIE else MediaType.TV
 
-    // Keep the local selection in sync with the ViewModel's category.
-    if (isMoviesSelected != (state.selectedCategory == MoviesCategory.MOVIES)) {
-        isMoviesSelected = state.selectedCategory == MoviesCategory.MOVIES
-    }
+    // Load the first category once when the screen first appears.
+    LaunchedEffect(Unit) { viewModel.ensureLoaded() }
 
     val items = if (isMoviesSelected) state.movies else state.tvShows
     val isLoading = if (isMoviesSelected) state.isLoadingMovies else state.isLoadingTvShows
@@ -109,18 +107,12 @@ fun MoviesScreen(
             CategoryChip(
                 label = "Movies",
                 selected = isMoviesSelected,
-                onClick = {
-                    isMoviesSelected = true
-                    viewModel.selectCategory(MoviesCategory.MOVIES)
-                }
+                onClick = { viewModel.selectCategory(MoviesCategory.MOVIES) }
             )
             CategoryChip(
                 label = "TV Shows",
                 selected = !isMoviesSelected,
-                onClick = {
-                    isMoviesSelected = false
-                    viewModel.selectCategory(MoviesCategory.TV_SHOWS)
-                }
+                onClick = { viewModel.selectCategory(MoviesCategory.TV_SHOWS) }
             )
         }
 
@@ -181,7 +173,7 @@ fun MoviesScreen(
                         VidSrcUrlBuilder.bestId(item) ?: "no-id:$index"
                     }
                 ) { _, item ->
-                    MovieCard(item = item, onClick = { onMovieSelected(item) })
+                    MovieCard(item = item, onClick = { onMovieSelected(item, mediaType) })
                 }
 
                 // Load more row
