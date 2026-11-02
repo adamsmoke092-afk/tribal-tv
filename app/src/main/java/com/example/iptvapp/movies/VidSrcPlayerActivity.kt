@@ -11,6 +11,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
 import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
 import com.example.iptvapp.R
@@ -145,7 +146,7 @@ class VidSrcPlayerActivity : ComponentActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val url = request?.url?.toString() ?: return true
-                return !url.startsWith("https://")
+                return url?.startsWith("https://") != true
             }
 
             override fun onReceivedError(
