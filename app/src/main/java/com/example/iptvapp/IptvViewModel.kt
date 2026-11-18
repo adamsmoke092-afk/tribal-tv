@@ -489,7 +489,10 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             val newUrl = draft.newPlaylistUrl
             val targetUrl: String = when {
                 newName != null && newUrl != null -> newUrl
-                draft.selectedPlaylistId != activeId -> {
+                // selectedPlaylistId is a unified id ("local:3" / "curated:uuid");
+                // activeId is the local row id. Compare in the local id space --
+                // a curated selection yields null and is always "different".
+                extractLocalId(draft.selectedPlaylistId) != activeId -> {
                     // Handle curated playlist selection
                     val curatedId = extractCuratedId(draft.selectedPlaylistId.toString())
                     if (curatedId != null) {
@@ -517,8 +520,12 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 // Fetch/parse FIRST — throws before the cache or any store
                 // is touched, so a failure leaves everything as it was.
                 val playlist = repository.fetchPlaylist(targetUrl)
-                draft.renamedPlaylists.forEach { (id, name) -> playlistStore.rename(id, name) }
-                draft.removedPlaylistIds.forEach { playlistStore.remove(it) }
+                draft.renamedPlaylists.forEach { (unifiedId, name) ->
+                    extractLocalId(unifiedId)?.let { playlistStore.rename(it, name) }
+                }
+                draft.removedPlaylistIds.forEach { unifiedId ->
+                    extractLocalId(unifiedId)?.let { playlistStore.remove(it) }
+                }
                 if (newName != null && newUrl != null) {
                     val added = playlistStore.add(newName, newUrl)
                     playlistStore.setActive(added.id)
@@ -533,7 +540,10 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                             playlistStore.setActive(added.id)
                         }
                     } else {
-                        playlistStore.setActive(draft.selectedPlaylistId)
+                        playlistStore.setActive(
+                            extractLocalId(draft.selectedPlaylistId)
+                                ?: throw IllegalStateException("Playlist not found")
+                        )
                     }
                 }
                 val activeId = playlistStore.activePlaylist().id
@@ -561,8 +571,12 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 epgStatus = null
                 epgNeedsRefetch = true
             } else {
-                draft.renamedPlaylists.forEach { (id, name) -> playlistStore.rename(id, name) }
-                draft.removedPlaylistIds.forEach { playlistStore.remove(it) }
+                draft.renamedPlaylists.forEach { (unifiedId, name) ->
+                    extractLocalId(unifiedId)?.let { playlistStore.rename(it, name) }
+                }
+                draft.removedPlaylistIds.forEach { unifiedId ->
+                    extractLocalId(unifiedId)?.let { playlistStore.remove(it) }
+                }
             }
             if (draft.showLogos != showLogos) {
                 showLogos = draft.showLogos

@@ -35,7 +35,14 @@ class PostgrestClient(val baseUrl: String, val apiKey: String) {
             conn.connectTimeout = 15_000
             conn.readTimeout = 15_000
             conn.setRequestProperty("apikey", apiKey)
-            conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            // A legacy anon key is a JWT, and PostgREST also needs it as the
+            // Bearer token to resolve the anon role. A new-style publishable
+            // key (sb_publishable_...) is not a JWT -- sending it as Bearer
+            // makes PostgREST reject the request as unparseable, so those get
+            // the apikey header only.
+            if (apiKey.count { it == '.' } == 2) {
+                conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            }
             conn.setRequestProperty("Accept", "application/json")
 
             val code = conn.responseCode

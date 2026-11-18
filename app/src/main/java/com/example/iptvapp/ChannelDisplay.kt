@@ -152,6 +152,3 @@ fun applyChipFilter(
  */
 fun sortOfflineLast(channels: List<M3uChannel>, dead: Set<String>): List<M3uChannel> =
     channels.filter { it.streamUrl !in dead } + channels.filter { it.streamUrl in dead }
-
-/** A cache older than this gets a silent background refresh on launch. */
-const val STALE_PLAYLIST_MS: Long = 24 * 60 * 60 * 1000L

@@ -4,8 +4,12 @@ import kotlinx.serialization.Serializable
 
 /**
  * App configuration model matching the Supabase table.
+ *
+ * Not @Serializable for the same reason as CuratedPlaylist: `value` is
+ * Map<String, Any>, which kotlinx.serialization has no serializer for, and
+ * nothing encodes or decodes this type -- AppConfigRepository parses the rows
+ * by hand.
  */
-@Serializable
 data class AppConfig(
     val key: String,
     val value: Map<String, Any>,
