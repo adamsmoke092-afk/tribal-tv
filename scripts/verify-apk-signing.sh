@@ -64,23 +64,27 @@ if ! out=$("$APKSIGNER" verify --print-certs "$APK" 2>&1); then
   exit 2
 fi
 
-ACTUAL=$(printf '%s\n' "$out" \
-  | sed -n 's/^Signer #1 certificate SHA-1 digest: //p' \
-  | head -1)
-ACTUAL=$(norm "$ACTUAL")
-
-if [ -z "$ACTUAL" ]; then
-  echo "apksigner printed no SHA-1 digest for $APK" >&2
+if [ -z "$out" ]; then
+  echo "::error::apksigner produced no output for $APK" >&2
   exit 2
 fi
 
+# Membership test, not extraction. Parsing apksigner's label is what broke this
+# check the first time it ran: the wording and spacing of the
+# "Signer #1 certificate ... digest" line are not a stable interface across
+# build-tools versions. The digest is 40 hex characters, so if it appears
+# anywhere in the output, it is the signer's.
+flat=$(printf '%s\n' "$out" | tr -d ':' | tr 'A-F' 'a-f')
+
 echo "apk:      $APK"
 echo "expected: $EXPECTED"
-echo "actual:   $ACTUAL"
 
-if [ "$ACTUAL" != "$EXPECTED" ]; then
-  echo "::error::APK is signed by $ACTUAL, not the key registered in the OAuth client ($EXPECTED). Google Sign-In will fail with DEVELOPER_ERROR."
-  exit 1
+if printf '%s' "$flat" | grep -q "$EXPECTED"; then
+  echo "OK: signing certificate matches the registered OAuth client."
+  exit 0
 fi
 
-echo "OK: signing certificate matches the registered OAuth client."
+echo "apksigner said:"
+printf '%s\n' "$out"
+echo "::error::the APK is not signed by $EXPECTED. Google Sign-In would fail with DEVELOPER_ERROR."
+exit 1
