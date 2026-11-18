@@ -1,6 +1,7 @@
 package com.example.iptvapp
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,6 +18,14 @@ import com.example.iptvapp.epg.epgSourceKeys
 import com.example.iptvapp.playlist.AppDatabase
 import com.example.iptvapp.playlist.M3uChannel
 import com.example.iptvapp.playlist.PlaylistRepository
+import com.example.iptvapp.supabase.AppConfigRepository
+import com.example.iptvapp.supabase.CuratedPlaylistRepository
+import com.example.iptvapp.supabase.FeatureFlags
+import com.example.iptvapp.supabase.SupabaseClient
+import com.example.iptvapp.supabase.UnifiedPlaylist
+import com.example.iptvapp.supabase.extractCuratedId
+import com.example.iptvapp.supabase.extractLocalId
+import com.example.iptvapp.supabase.mergePlaylists
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -24,6 +33,8 @@ import kotlinx.coroutines.withContext
 
 // A cached EPG older than this gets a background refresh on launch.
 private const val STALE_EPG_MS: Long = 6 * 60 * 60 * 1000L
+// Playlist cache older than this gets a silent background refresh on launch.
+private const val STALE_PLAYLIST_MS: Long = 24 * 60 * 60 * 1000L
 
 /**
  * Owns all app data + screen state so it survives Activity recreation
@@ -48,6 +59,8 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     private lateinit var deadStore: DeadChannelStore
     private lateinit var repository: PlaylistRepository
     private lateinit var epgRepository: EpgRepository
+    private lateinit var curatedPlaylistRepo: CuratedPlaylistRepository
+    private lateinit var appConfigRepo: AppConfigRepository
 
     // True once stores are built and initial settings/user data are loaded.
     // The UI shows a spinner until then.
@@ -65,6 +78,9 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     var playlists by mutableStateOf<List<SavedPlaylist>>(emptyList())
         private set
     var activePlaylistId by mutableStateOf(NEW_PLAYLIST_ID)
+        private set
+    // Unified playlists (curated + local) for the Settings dialog.
+    var unifiedPlaylists by mutableStateOf<List<UnifiedPlaylist>>(emptyList())
         private set
     var showLogos by mutableStateOf(true)
         private set
@@ -110,6 +126,9 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var epgLoading by mutableStateOf(false)
         private set
+    // Feature flags from Supabase
+    var featureFlags by mutableStateOf<FeatureFlags>(FeatureFlags.DEFAULT)
+        private set
     // Now/next for the currently selected channel; null when EPG is off or
     // the channel has no guide data.
     var nowNext by mutableStateOf<NowNext?>(null)
@@ -145,32 +164,44 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 recentsStore = RecentsStore(app)
                 deadStore = DeadChannelStore(app)
                 playlistStore.ensureSeeded(settings.playlistUrl())
-            }
-            // Back on the main thread: publish initial state.
-            val active = playlistStore.activePlaylist()
-            playlistUrl = active.url
-            playlists = playlistStore.playlists()
-            activePlaylistId = active.id
-            showLogos = settings.showLogos()
-            hideGeoBlocked = settings.hideGeoBlocked()
-            hideNot24x7 = settings.hideNot24x7()
-            hdOnly = settings.hdOnly()
-            resumeOnLaunch = settings.resumeOnLaunch()
-            dataSaver = settings.dataSaver()
-            audioOnly = settings.audioOnly()
-            favourites = favouritesStore.favourites()
-            recents = recentsStore.recents()
-            deadChannels = deadStore.dead()
-            epgLoose = settings.epgLooseMatching()
-            // One-time carry-over of the old global EPG setting onto the
-            // playlist that is active right now, then per-playlist from here.
-            playlistStore.migrateLegacyEpgOverride(settings.epgUrl(), active.id)
-            epgManualOverride = playlistStore.epgOverride(active.id)
-            epgHeaderUrl = playlistStore.epgHeaderUrl(active.id)
-            ready = true
 
-            loadInitialChannels()
-            maybeRefreshEpg()
+                // Initialize Supabase repositories
+                val supabaseClient = SupabaseClient.client
+                curatedPlaylistRepo = CuratedPlaylistRepository(supabaseClient.postgrest)
+                appConfigRepo = AppConfigRepository(supabaseClient.postgrest)
+
+                // Fetch curated playlists and feature flags in parallel
+                val curatedPlaylists = curatedPlaylistRepo.getActivePlaylists()
+                val featureFlags = appConfigRepo.getFeatureFlags()
+
+                // Back on the main thread: publish initial state.
+                val active = playlistStore.activePlaylist()
+                playlistUrl = active.url
+                playlists = playlistStore.playlists()
+                activePlaylistId = active.id
+                unifiedPlaylists = mergePlaylists(curatedPlaylists, playlists)
+                showLogos = settings.showLogos()
+                hideGeoBlocked = settings.hideGeoBlocked()
+                hideNot24x7 = settings.hideNot24x7()
+                hdOnly = settings.hdOnly()
+                resumeOnLaunch = settings.resumeOnLaunch()
+                dataSaver = settings.dataSaver()
+                audioOnly = settings.audioOnly()
+                favourites = favouritesStore.favourites()
+                recents = recentsStore.recents()
+                deadChannels = deadStore.dead()
+                epgLoose = settings.epgLooseMatching()
+                this@IptvViewModel.featureFlags = featureFlags
+                // One-time carry-over of the old global EPG setting onto the
+                // playlist that is active right now, then per-playlist from here.
+                playlistStore.migrateLegacyEpgOverride(settings.epgUrl(), active.id)
+                epgManualOverride = playlistStore.epgOverride(active.id)
+                epgHeaderUrl = playlistStore.epgHeaderUrl(active.id)
+                ready = true
+
+                loadInitialChannels()
+                maybeRefreshEpg()
+            }
         }
     }
 
@@ -458,10 +489,24 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             val newUrl = draft.newPlaylistUrl
             val targetUrl: String = when {
                 newName != null && newUrl != null -> newUrl
-                draft.selectedPlaylistId != activeId -> playlistStore.playlists()
-                    .firstOrNull { it.id == draft.selectedPlaylistId }
-                    ?.url
-                    ?: throw IllegalStateException("Playlist not found")
+                draft.selectedPlaylistId != activeId -> {
+                    // Handle curated playlist selection
+                    val curatedId = extractCuratedId(draft.selectedPlaylistId.toString())
+                    if (curatedId != null) {
+                        // Fetch curated playlist by ID
+                        val curated = curatedPlaylistRepo.getPlaylistById(curatedId)
+                        curated?.m3uUrl ?: throw IllegalStateException("Curated playlist not found")
+                    } else {
+                        // Local playlist
+                        val localId = extractLocalId(draft.selectedPlaylistId.toString())
+                        localId?.let { id ->
+                            playlistStore.playlists()
+                                .firstOrNull { it.id == id }
+                                ?.url
+                                ?: throw IllegalStateException("Playlist not found")
+                        } ?: throw IllegalStateException("Playlist not found")
+                    }
+                }
                 else -> ""
             }
             // Set when something about the guide changes (active playlist
@@ -478,7 +523,18 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                     val added = playlistStore.add(newName, newUrl)
                     playlistStore.setActive(added.id)
                 } else {
-                    playlistStore.setActive(draft.selectedPlaylistId)
+                    // Handle curated playlist selection
+                    val curatedId = extractCuratedId(draft.selectedPlaylistId.toString())
+                    if (curatedId != null) {
+                        // For curated playlists, we need to add them to local store first
+                        val curated = curatedPlaylistRepo.getPlaylistById(curatedId)
+                        curated?.let { c ->
+                            val added = playlistStore.add(c.name, c.m3uUrl)
+                            playlistStore.setActive(added.id)
+                        }
+                    } else {
+                        playlistStore.setActive(draft.selectedPlaylistId)
+                    }
                 }
                 val activeId = playlistStore.activePlaylist().id
                 // Persist what THIS playlist declares in its own header. An
@@ -563,6 +619,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (epgNeedsRefetch) maybeRefreshEpg(force = true)
             playlists = playlistStore.playlists()
+            unifiedPlaylists = mergePlaylists(curatedPlaylistRepo.getActivePlaylists(), playlists)
             activePlaylistId = playlistStore.activePlaylist().id
             null
         } catch (e: Exception) {

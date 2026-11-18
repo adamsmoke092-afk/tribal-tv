@@ -1,0 +1,6 @@
+# Supabase configuration for Tribal TV
+# Copy this file to local.properties and fill in your values
+# NEVER commit local.properties with real secrets!
+
+supabase.url=https://your-project.supabase.co
+supabase.anon.key=your-anon-key-here

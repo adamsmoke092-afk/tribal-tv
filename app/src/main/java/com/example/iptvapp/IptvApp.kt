@@ -11,6 +11,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.example.iptvapp.movies.MoviesScreen
 import com.example.iptvapp.movies.MoviesViewModel
+import com.example.iptvapp.supabase.UnifiedPlaylist
 
 /**
  * Top-level screen toggle: shows the channel list until something is
@@ -102,8 +103,8 @@ fun IptvApp(
 
             if (vm.showSettings) {
                 SettingsDialog(
-                    playlists = vm.playlists,
-                    initialActivePlaylistId = vm.activePlaylistId,
+                    unifiedPlaylists = vm.unifiedPlaylists,
+                    initialActivePlaylistId = vm.activePlaylistId.toString(),
                     initialShowLogos = vm.showLogos,
                     initialHideGeoBlocked = vm.hideGeoBlocked,
                     initialHideNot24x7 = vm.hideNot24x7,

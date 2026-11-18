@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Your Tribal TV sign-in code</title>
+</head>
+<body style="margin:0;padding:0;background:#0f1115;color:#e8eaed;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f1115;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;background:#171a21;border-radius:12px;padding:32px;">
+          <tr>
+            <td style="font-size:20px;font-weight:600;letter-spacing:-0.2px;padding-bottom:6px;">Tribal TV</td>
+          </tr>
+          <tr>
+            <td style="font-size:14px;color:#9aa0a6;padding-bottom:24px;">Sign-in code</td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:0 0 24px;">
+              <div style="font-size:34px;font-weight:700;letter-spacing:10px;padding:16px 8px 16px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#ffffff;background:#0f1115;border:1px solid #2a2f3a;border-radius:10px;">{{ .Token }}</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="font-size:14px;line-height:1.6;color:#c7cbd1;padding-bottom:16px;">
+              Enter this code in the app to finish signing in. It expires in 10 minutes and can be used once.
+            </td>
+          </tr>
+          <tr>
+            <td style="font-size:13px;line-height:1.6;color:#8b9096;padding-bottom:8px;">
+              If you did not ask for this code, you can ignore this email. Nobody can sign in without it.
+            </td>
+          </tr>
+          <tr>
+            <td style="font-size:12px;line-height:1.6;color:#6b7076;padding-top:16px;border-top:1px solid #2a2f3a;">
+              Requested for {{ .Email }}. Do not forward this email.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

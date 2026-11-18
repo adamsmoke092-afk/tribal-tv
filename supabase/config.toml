@@ -1,0 +1,82 @@
+# Supabase configuration for Tribal TV
+# This file is used by the Supabase CLI for local development
+
+project_id = "tribal-tv"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+shadow_port = 54323
+major_version = 16
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[auth]
+enabled = true
+# Placeholder. Replace with the real origin once the domain is live.
+# `.invalid` is reserved by RFC 2606 and can never resolve, so a stray
+# redirect fails loudly instead of landing on someone else's site.
+site_url = "https://example.invalid"
+additional_redirect_urls = []
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+enable_signup = true
+enable_anonymous_sign_ins = false
+min_password_length = 8
+password_hibp_enabled = true
+# The code is the only email credential. 10 min, not the 1 h default.
+# Keep this in step with the "expires in 10 minutes" line in the template.
+otp_expiry = 600
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+double_confirm_changes = true
+secure_email_change_enabled = true
+otp_length = 6
+
+# The code, not a link. A link opens a browser and cannot hand the session
+# back to the app; on a no-GMS Huawei there is no App Links verification to
+# make it work either. {{ .Token }} is typed by the user.
+[auth.email.template.magic_link]
+subject = "Your Tribal TV sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
+# No [auth.email.smtp] here, on purpose.
+#
+# `supabase start` would use it, so every local sign-in would send a real
+# email and burn the provider's daily quota. Local dev catches mail in
+# Inbucket (http://localhost:54324). The hosted project gets SMTP from
+# scripts/apply-auth-smtp.sh, which reads the key from ~/.resend_key and
+# never puts it in this file.
+
+[auth.sms]
+enabled = false
+
+[auth.external]
+enabled = false
+
+[functions]
+enabled = false
+
+[realtime]
+enabled = true
+ip_version = "ipv4"
+
+[storage]
+enabled = false
+
+[logs]
+enabled = true
+level = "info"

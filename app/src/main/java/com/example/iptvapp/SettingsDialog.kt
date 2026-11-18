@@ -43,21 +43,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.iptvapp.epg.EpgRefreshState
 import com.example.iptvapp.epg.EpgSourceStatus
+import com.example.iptvapp.supabase.UnifiedPlaylist
 import kotlinx.coroutines.launch
 
 /**
  * The whole settings payload in one object, so the dialog can hand the
  * save handler a single value instead of loose parameters. The playlist
  * fields describe the registry as of Save: which existing playlist is
- * active, an optional new playlist to add (adding always activates it),
- * and the ids of playlists to remove. Everything else is a plain switch.
+ * active (unified ID: "curated:uuid" or "local:id"), an optional new
+ * local playlist to add (adding always activates it), and the unified
+ * ids of local playlists to remove. Everything else is a plain switch.
  */
 data class SettingsDraft(
-    val selectedPlaylistId: Long,
+    val selectedPlaylistId: String,
     val newPlaylistName: String?,
     val newPlaylistUrl: String?,
-    val removedPlaylistIds: List<Long>,
-    val renamedPlaylists: Map<Long, String>,
+    val removedPlaylistIds: List<String>,
+    val renamedPlaylists: Map<String, String>,
     val showLogos: Boolean,
     val hideGeoBlocked: Boolean,
     val hideNot24x7: Boolean,
@@ -76,17 +78,19 @@ data class SettingsDraft(
  * clearly on and off (gold track when on; card track with a disabled
  * border and thumb when off) with a one-line gray description each.
  *
- * Playlist rows carry the URL on two lines; delete asks for confirmation
- * and is refused for the last remaining playlist. Any change that swaps
- * the active playlist makes the app fetch and parse it BEFORE anything is
- * persisted or the cache is replaced — a bad URL or empty playlist leaves
- * everything exactly as it was, with the error shown inline.
+ * Playlist rows show curated (from Supabase) and local playlists.
+ * Curated playlists show category badge and logo; local playlists
+ * can be renamed/deleted. Adding always creates a local playlist.
+ * Any change that swaps the active playlist makes the app fetch and
+ * parse it BEFORE anything is persisted or the cache is replaced —
+ * a bad URL or empty playlist leaves everything exactly as it was,
+ * with the error shown inline.
  */
 @OptIn(ExperimentalMaterial3Api::class) // harmless if this AlertDialog overload is stable in our version
 @Composable
 fun SettingsDialog(
-    playlists: List<SavedPlaylist>,
-    initialActivePlaylistId: Long,
+    unifiedPlaylists: List<UnifiedPlaylist>,
+    initialActivePlaylistId: String,
     initialShowLogos: Boolean,
     initialHideGeoBlocked: Boolean,
     initialHideNot24x7: Boolean,
@@ -104,13 +108,13 @@ fun SettingsDialog(
     var addingNew by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
-    var removedPlaylistIds by remember { mutableStateOf(emptyList<Long>()) }
-    var pendingDeleteId by remember { mutableStateOf<Long?>(null) }
+    var removedPlaylistIds by remember { mutableStateOf(emptyList<String>()) }
+    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
     // Rename mode: the row being edited and its text buffer. Confirmed
     // renames collect in the map and ride to Save with everything else.
-    var renamingPlaylistId by remember { mutableStateOf<Long?>(null) }
+    var renamingPlaylistId by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
-    var renamedPlaylists by remember { mutableStateOf(mapOf<Long, String>()) }
+    var renamedPlaylists by remember { mutableStateOf(mapOf<String, String>()) }
     var showLogos by remember { mutableStateOf(initialShowLogos) }
     var hideGeoBlocked by remember { mutableStateOf(initialHideGeoBlocked) }
     var hideNot24x7 by remember { mutableStateOf(initialHideNot24x7) }
@@ -125,7 +129,8 @@ fun SettingsDialog(
     var isSaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    val visiblePlaylists = playlists.filter { it.id !in removedPlaylistIds }
+    val visiblePlaylists = unifiedPlaylists.filter { it.id !in removedPlaylistIds }
+    val localPlaylistsCount = unifiedPlaylists.count { !it.isCurated && it.id !in removedPlaylistIds }
 
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
@@ -156,6 +161,10 @@ fun SettingsDialog(
                 )
                 Spacer(Modifier.height(4.dp))
                 visiblePlaylists.forEach { playlist ->
+                    val isCurated = playlist.isCurated
+                    val canDelete = !isCurated && playlist.id != selectedPlaylistId && localPlaylistsCount > 1
+                    val canRename = !isCurated
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
@@ -171,7 +180,7 @@ fun SettingsDialog(
                                 unselectedColor = PaletteTextSecondary
                             )
                         )
-                        if (renamingPlaylistId == playlist.id) {
+                        if (renamingPlaylistId == playlist.id && canRename) {
                             OutlinedTextField(
                                 value = renameText,
                                 onValueChange = { renameText = it },
@@ -212,11 +221,30 @@ fun SettingsDialog(
                             }
                         } else {
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = renamedPlaylists[playlist.id] ?: playlist.name,
-                                    fontSize = 14.sp,
-                                    color = PaletteTextPrimary
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = renamedPlaylists[playlist.id] ?: playlist.name,
+                                        fontSize = 14.sp,
+                                        color = PaletteTextPrimary
+                                    )
+                                    if (isCurated) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            text = playlist.category.name,
+                                            fontSize = 10.sp,
+                                            color = PaletteGold,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                        if (playlist.countryCode != null) {
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                text = playlist.countryCode!!,
+                                                fontSize = 10.sp,
+                                                color = PaletteTextSecondary
+                                            )
+                                        }
+                                    }
+                                }
                                 Text(
                                     text = playlist.url,
                                     fontSize = 11.sp,
@@ -225,24 +253,27 @@ fun SettingsDialog(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            TextButton(onClick = {
-                                renamingPlaylistId = playlist.id
-                                renameText = renamedPlaylists[playlist.id] ?: playlist.name
-                            }) {
-                                Text(text = "Rename", color = PaletteGold)
+                            if (canRename) {
+                                TextButton(onClick = {
+                                    renamingPlaylistId = playlist.id
+                                    renameText = renamedPlaylists[playlist.id] ?: playlist.name
+                                }) {
+                                    Text(text = "Rename", color = PaletteGold)
+                                }
                             }
-                            // Deletion is confirmed and refused for the
-                            // active playlist and for the last remaining
-                            // one — the registry must never end up empty.
-                            IconButton(
-                                onClick = { pendingDeleteId = playlist.id },
-                                enabled = playlist.id != selectedPlaylistId && visiblePlaylists.size > 1
-                            ) {
-                                Icon(
-                                    imageVector = TribalIcons.Close,
-                                    contentDescription = "Delete playlist",
-                                    tint = PaletteTextSecondary
-                                )
+                            // Deletion only for local playlists, confirmed and refused
+                            // for the active playlist and for the last remaining one.
+                            if (canDelete) {
+                                IconButton(
+                                    onClick = { pendingDeleteId = playlist.id },
+                                    enabled = true
+                                ) {
+                                    Icon(
+                                        imageVector = TribalIcons.Close,
+                                        contentDescription = "Delete playlist",
+                                        tint = PaletteTextSecondary
+                                    )
+                                }
                             }
                         }
                     }
@@ -544,7 +575,7 @@ fun SettingsDialog(
                             isSaving = true
                             val error = onSave(
                                 SettingsDraft(
-                                    selectedPlaylistId = if (addingNew) NEW_PLAYLIST_ID else selectedPlaylistId,
+                                    selectedPlaylistId = if (addingNew) "new" else selectedPlaylistId,
                                     newPlaylistName = if (addingNew) name else null,
                                     newPlaylistUrl = if (addingNew) url else null,
                                     removedPlaylistIds = removedPlaylistIds,

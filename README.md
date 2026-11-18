@@ -29,6 +29,51 @@ Built entirely via GitHub Actions — the dev device can't run Gradle.
 | `app/src/main/java/.../player/` | ExoPlayer factory + retrying DataSource |
 | `app/src/main/java/.../*.kt` | MainActivity, channel list + player screens |
 | `.github/workflows/build.yml` | CI: JDK 17 → Gradle → assembleDebug → artifact |
+| `supabase/migrations/` | Supabase SQL migrations (curated playlists, app config) |
+| `supabase/config.toml` | Supabase local dev config |
+
+## Supabase Backend
+
+Tribal TV uses Supabase for curated playlists and app configuration/feature flags.
+
+### Local Development
+
+1. Copy `local.properties.example` to `local.properties`:
+   ```bash
+   cp local.properties.example local.properties
+   ```
+2. Add your Supabase project URL and anon key to `local.properties`:
+   ```
+   supabase.url=https://your-project.supabase.co
+   supabase.anon.key=your-anon-key-here
+   ```
+
+### CI/CD (GitHub Actions)
+
+Add these secrets to your GitHub repository:
+- `SUPABASE_URL` — your Supabase project URL
+- `SUPABASE_ANON_KEY` — your Supabase anon/public key
+
+The build workflow will inject these into `BuildConfig`.
+
+### Database Schema
+
+Run migrations in Supabase SQL editor or via CLI:
+```bash
+supabase db push
+```
+
+Tables:
+- `curated_playlists` — admin-managed playlists with category, country, logo, sort order
+- `app_config` — feature flags (maintenance mode, force update, min version, defaults)
+
+### Admin Access
+
+Admin policies use hardcoded emails (configure in migrations):
+- `adam@tribal.tv`
+- `admin@tribal.tv`
+
+Add these users in Supabase Auth dashboard to grant admin access.
 
 ## Notes
 

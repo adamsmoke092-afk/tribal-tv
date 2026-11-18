@@ -32,8 +32,64 @@ jobs:
       - name: Run unit tests
         run: gradle testDebugUnitTest --no-daemon
 
+      # Debug builds are signed with the release key when it exists, so the
+      # APK installed on the phone carries the certificate registered in the
+      # Google OAuth client. Without it AGP mints a fresh debug keystore on
+      # every clean runner and Google Sign-In fails with DEVELOPER_ERROR.
+      # The path is exported only when the secret is non-empty, so a fork PR
+      # (no secrets) still gets a normally-signed debug APK.
+      - name: Decode keystore (if present)
+        env:
+          KEYSTORE_B64: ${{ secrets.TRIBAL_TV_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.TRIBAL_TV_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.TRIBAL_TV_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.TRIBAL_TV_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "No TRIBAL_TV_KEYSTORE_B64 secret; debug APK uses AGP's default debug key."
+            exit 0
+          fi
+          # A half-configured keystore is worse than none: the build would
+          # succeed, sign with AGP's throwaway key, and Google Sign-In would
+          # fail at runtime with DEVELOPER_ERROR.
+          missing=""
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing TRIBAL_TV_KEYSTORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ] || missing="$missing TRIBAL_TV_KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ] || missing="$missing TRIBAL_TV_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::TRIBAL_TV_KEYSTORE_B64 is set but these are not:$missing"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/tribal-tv.jks"
+          # A truncated paste is the failure mode for a 3 KB secret entered by
+          # hand. openssl fails loudly on a corrupt file or a wrong password,
+          # which turns "the APK is signed with nothing" into a clear message.
+          openssl pkcs12 -in "$GITHUB_WORKSPACE/tribal-tv.jks" -noout \
+            -passin env:TRIBAL_TV_KEYSTORE_PASSWORD
+          echo "TRIBAL_TV_KEYSTORE_FILE=$GITHUB_WORKSPACE/tribal-tv.jks" >> "$GITHUB_ENV"
+
       - name: Build debug APK
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TRIBAL_TV_KEYSTORE_PASSWORD: ${{ secrets.TRIBAL_TV_KEYSTORE_PASSWORD }}
+          TRIBAL_TV_KEY_ALIAS: ${{ secrets.TRIBAL_TV_KEY_ALIAS }}
+          TRIBAL_TV_KEY_PASSWORD: ${{ secrets.TRIBAL_TV_KEY_PASSWORD }}
         run: gradle assembleDebug --no-daemon
+
+      # The APK must carry the certificate registered in the Google OAuth
+      # client, or Google Sign-In fails at runtime with DEVELOPER_ERROR and
+      # nothing in the build says so. Skipped when there is no keystore secret
+      # (fork PR), because then the APK is not release-signed at all.
+      - name: Verify signing certificate
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/tribal-tv.jks" ]; then
+            echo "No keystore secret; skipping certificate check."
+            exit 0
+          fi
+          bash scripts/verify-apk-signing.sh \
+            app/build/outputs/apk/debug/app-debug.apk \
+            63cb1cef21ec6a158c9331cd50f17c133734c7c3
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -83,15 +139,43 @@ jobs:
       - name: Decode keystore
         env:
           KEYSTORE_B64: ${{ secrets.TRIBAL_TV_KEYSTORE_B64 }}
-        run: printf '%s' "$KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/tribal-tv.jks"
+          KEYSTORE_PASSWORD: ${{ secrets.TRIBAL_TV_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.TRIBAL_TV_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.TRIBAL_TV_KEY_PASSWORD }}
+        run: |
+          # The gate only proves the keystore exists. Without this check a
+          # missing password secret would make the build succeed and upload an
+          # UNSIGNED apk under the release artifact name.
+          missing=""
+          [ -n "$KEYSTORE_PASSWORD" ] || missing="$missing TRIBAL_TV_KEYSTORE_PASSWORD"
+          [ -n "$KEY_ALIAS" ] || missing="$missing TRIBAL_TV_KEY_ALIAS"
+          [ -n "$KEY_PASSWORD" ] || missing="$missing TRIBAL_TV_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::TRIBAL_TV_KEYSTORE_B64 is set but these are not:$missing"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/tribal-tv.jks"
+          # A truncated paste is the failure mode for a 3 KB secret entered by
+          # hand. openssl fails loudly on a corrupt file or a wrong password,
+          # which turns "the APK is signed with nothing" into a clear message.
+          openssl pkcs12 -in "$GITHUB_WORKSPACE/tribal-tv.jks" -noout \
+            -passin env:TRIBAL_TV_KEYSTORE_PASSWORD
 
       - name: Build release APK
         env:
           TRIBAL_TV_KEYSTORE_FILE: ${{ github.workspace }}/tribal-tv.jks
-          TRIBAL_TV_KEYSTORE_PASSWORD: tribaltv-release-2026
-          TRIBAL_TV_KEY_ALIAS: tribaltv
-          TRIBAL_TV_KEY_PASSWORD: tribaltv-release-2026
+          TRIBAL_TV_KEYSTORE_PASSWORD: ${{ secrets.TRIBAL_TV_KEYSTORE_PASSWORD }}
+          TRIBAL_TV_KEY_ALIAS: ${{ secrets.TRIBAL_TV_KEY_ALIAS }}
+          TRIBAL_TV_KEY_PASSWORD: ${{ secrets.TRIBAL_TV_KEY_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: gradle assembleRelease --no-daemon
+
+      - name: Verify signing certificate
+        run: |
+          bash scripts/verify-apk-signing.sh \
+            app/build/outputs/apk/release/app-release.apk \
+            63cb1cef21ec6a158c9331cd50f17c133734c7c3
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
