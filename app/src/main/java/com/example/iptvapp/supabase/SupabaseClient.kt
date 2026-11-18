@@ -1,6 +1,7 @@
 package com.example.iptvapp.supabase
 
 import android.content.Context
+import android.util.Log
 import com.example.iptvapp.BuildConfig
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -29,6 +30,12 @@ class PostgrestClient(val baseUrl: String, val apiKey: String) {
      * rather than as nobody.
      */
     fun get(table: String, query: String): JsonElement {
+        // Unconfigured, not broken. Both repositories catch this and fall back
+        // to their documented defaults (empty list / FeatureFlags.DEFAULT), so
+        // the app runs on local playlists instead of failing.
+        if (baseUrl.isBlank() || apiKey.isBlank()) {
+            throw IOException("Supabase is not configured (SUPABASE_URL / SUPABASE_ANON_KEY)")
+        }
         val conn = URL("$restUrl/$table?$query").openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "GET"
@@ -66,6 +73,8 @@ class SupabaseHandle(val postgrest: PostgrestClient)
  * Initialized once with the project URL and anon key from BuildConfig.
  */
 object SupabaseClient {
+    private const val TAG = "SupabaseClient"
+
     private var _client: SupabaseHandle? = null
 
     val client: SupabaseHandle
@@ -81,9 +90,12 @@ object SupabaseClient {
         val supabaseAnonKey = BuildConfig.SUPABASE_ANON_KEY
 
         if (supabaseUrl.isBlank() || supabaseAnonKey.isBlank()) {
-            throw IllegalStateException(
-                "SUPABASE_URL and SUPABASE_ANON_KEY must be set in BuildConfig (via local.properties or CI secrets)"
-            )
+            // Not fatal. Curated playlists are one extra source and the feature
+            // flags have defaults, so the app runs on local playlists. Throwing
+            // here instead crashed on launch in every build whose CI secrets
+            // were missing -- and in every unit test, which has no BuildConfig
+            // values at all.
+            Log.w(TAG, "Supabase is not configured; using local playlists and default flags")
         }
 
         _client = SupabaseHandle(PostgrestClient(supabaseUrl, supabaseAnonKey))
