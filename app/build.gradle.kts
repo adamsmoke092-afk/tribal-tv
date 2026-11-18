@@ -90,6 +90,11 @@ android {
 
     buildFeatures {
         compose = true
+        // defaultConfig above sets SUPABASE_URL / SUPABASE_ANON_KEY via
+        // buildConfigField. AGP 8 defaults this to false and fails at
+        // configuration time -- before compiling anything -- if a field is
+        // declared without it.
+        buildConfig = true
     }
 
     testOptions {

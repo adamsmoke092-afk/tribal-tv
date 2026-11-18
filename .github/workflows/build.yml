@@ -65,7 +65,7 @@ jobs:
           # hand. openssl fails loudly on a corrupt file or a wrong password,
           # which turns "the APK is signed with nothing" into a clear message.
           openssl pkcs12 -in "$GITHUB_WORKSPACE/tribal-tv.jks" -noout \
-            -passin env:TRIBAL_TV_KEYSTORE_PASSWORD
+            -passin env:KEYSTORE_PASSWORD
           echo "TRIBAL_TV_KEYSTORE_FILE=$GITHUB_WORKSPACE/tribal-tv.jks" >> "$GITHUB_ENV"
 
       - name: Build debug APK
@@ -159,7 +159,7 @@ jobs:
           # hand. openssl fails loudly on a corrupt file or a wrong password,
           # which turns "the APK is signed with nothing" into a clear message.
           openssl pkcs12 -in "$GITHUB_WORKSPACE/tribal-tv.jks" -noout \
-            -passin env:TRIBAL_TV_KEYSTORE_PASSWORD
+            -passin env:KEYSTORE_PASSWORD
 
       - name: Build release APK
         env:
