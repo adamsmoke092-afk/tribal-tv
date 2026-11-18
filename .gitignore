@@ -12,3 +12,9 @@ local.properties
 /app/release
 *.apk
 *.aab
+
+# Private design docs. Generic patterns on purpose: naming the files here would
+# write the upstream's name into a tracked, public file -- the exact leak this
+# is meant to prevent. These survive a careless `git add -A`; a habit does not.
+BACKEND_*.md
+BFF_*.md

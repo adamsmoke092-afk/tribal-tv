@@ -13,6 +13,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # A tracked design doc is a leak no later commit can undo. The .gitignore
+      # patterns stop a plain `git add -A`; this catches `git add -f`. It prints
+      # a count and never a filename -- one of those filenames contains the
+      # upstream's name, and this log is public.
+      - name: No private design docs tracked
+        run: |
+          n=$(git ls-files | grep -ciE '(^|/)(BACKEND_[^/]*\.md|BFF_[^/]*\.md)$' || true)
+          n=${n:-0}
+          if [ "$n" -gt 0 ]; then
+            echo "::error::$n private design doc(s) are tracked. Remove them from the index before pushing."
+            exit 1
+          fi
+          echo "no private design docs tracked"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
