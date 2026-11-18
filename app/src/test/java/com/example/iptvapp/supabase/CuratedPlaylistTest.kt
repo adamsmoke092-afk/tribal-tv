@@ -3,7 +3,6 @@ package com.example.iptvapp.supabase
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
@@ -73,37 +72,5 @@ class CuratedPlaylistTest {
         assertEquals("", playlist.countryCode)
         assertEquals(true, playlist.isActive)
         assertEquals(0, playlist.sortOrder)
-    }
-}
-
-object CuratedPlaylistRepository {
-    @JvmStatic
-    fun parsePlaylist(obj: JsonObject): CuratedPlaylist {
-        val categoryStr = obj["category"]?.jsonPrimitive?.content ?: "OTHER"
-        val category = CuratedPlaylist.PlaylistCategory.valueOf(categoryStr.uppercase())
-
-        val metadataMap = mutableMapOf<String, Any>()
-        val metadata = obj["metadata"] as? JsonObject
-        metadata?.forEach { (key, value) ->
-            metadataMap[key] = when (value) {
-                is JsonPrimitive -> value.content
-                else -> value.toString()
-            }
-        }
-
-        return CuratedPlaylist(
-            id = obj["id"]?.jsonPrimitive?.content ?: "",
-            name = obj["name"]?.jsonPrimitive?.content ?: "",
-            description = obj["description"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() },
-            m3uUrl = obj["m3u_url"]?.jsonPrimitive?.content ?: "",
-            logoUrl = obj["logo_url"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() },
-            category = category,
-            countryCode = obj["country_code"]?.jsonPrimitive?.content?.takeIf { it.isNotEmpty() },
-            isActive = obj["is_active"]?.jsonPrimitive?.content?.toBoolean() ?: false,
-            sortOrder = obj["sort_order"]?.jsonPrimitive?.content?.toInt() ?: 0,
-            metadata = metadataMap,
-            createdAt = obj["created_at"]?.jsonPrimitive?.content ?: "",
-            updatedAt = obj["updated_at"]?.jsonPrimitive?.content ?: ""
-        )
     }
 }
