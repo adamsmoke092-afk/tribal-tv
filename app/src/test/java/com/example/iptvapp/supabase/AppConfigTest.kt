@@ -27,12 +27,7 @@ class AppConfigTest {
             "min_app_version" to mapOf(
                 "min_version_code" to "3",
                 "message" to "Too old"
-            ),
-            "default_playlist_url" to mapOf("default_playlist_url" to "https://example.com/default.m3u"),
-            "epg_auto_refresh_hours" to mapOf("epg_auto_refresh_hours" to "12"),
-            "max_buffer_size_mb" to mapOf("max_buffer_size_mb" to "100"),
-            "enable_vidsrc_movies" to mapOf("enable_vidsrc_movies" to "false"),
-            "vidsrc_base_url" to mapOf("vidsrc_base_url" to "https://custom.vidsrc.com")
+            )
         )
 
         val flags = AppConfigRepository.Companion.parseFeatureFlags(configMap)
@@ -46,12 +41,6 @@ class AppConfigTest {
 
         assertEquals(3, flags.minAppVersion.minVersionCode)
         assertEquals("Too old", flags.minAppVersion.message)
-
-        assertEquals("https://example.com/default.m3u", flags.defaultPlaylistUrl)
-        assertEquals(12, flags.epgAutoRefreshHours)
-        assertEquals(100, flags.maxBufferSizeMb)
-        assertFalse(flags.enableVidSrcMovies)
-        assertEquals("https://custom.vidsrc.com", flags.vidSrcBaseUrl)
     }
 
     @Test
@@ -66,11 +55,6 @@ class AppConfigTest {
         assertEquals(defaults.forceUpdate.enabled, flags.forceUpdate.enabled)
         assertEquals(defaults.forceUpdate.minVersionCode, flags.forceUpdate.minVersionCode)
         assertEquals(defaults.minAppVersion.minVersionCode, flags.minAppVersion.minVersionCode)
-        assertEquals(defaults.defaultPlaylistUrl, flags.defaultPlaylistUrl)
-        assertEquals(defaults.epgAutoRefreshHours, flags.epgAutoRefreshHours)
-        assertEquals(defaults.maxBufferSizeMb, flags.maxBufferSizeMb)
-        assertEquals(defaults.enableVidSrcMovies, flags.enableVidSrcMovies)
-        assertEquals(defaults.vidSrcBaseUrl, flags.vidSrcBaseUrl)
     }
 
     @Test

@@ -9,10 +9,9 @@
 #   ~/.supabase_token   Supabase personal access token (sbp_...)
 #   ~/.resend_key       Resend API key, sending-only, restricted to the domain
 #
-# Still a placeholder:
-#   SENDER_EMAIL   the verified sending address, e.g. no-reply@mail.example.com
-#
-# PROJECT_REF is filled in; SUPABASE_PROJECT_REF overrides it.
+# Sender: no-reply@tribaltv.mprcybernetweb.space, on the domain verified in
+# Resend on 2026-11-18. PROJECT_REF and SENDER_EMAIL are both filled in;
+# SUPABASE_PROJECT_REF and VOD_SENDER_EMAIL override them for a test run.
 #
 # Usage:
 #   bash scripts/apply-auth-smtp.sh --get     current config, secrets redacted
@@ -24,7 +23,7 @@ export TMPDIR="${TMPDIR:-$HOME/tmp}"
 mkdir -p "$TMPDIR"
 
 PROJECT_REF="${SUPABASE_PROJECT_REF:-jigzoerxsbumpijksveo}"
-SENDER_EMAIL="${VOD_SENDER_EMAIL:-__SENDER_EMAIL__}"
+SENDER_EMAIL="${VOD_SENDER_EMAIL:-no-reply@tribaltv.mprcybernetweb.space}"
 SENDER_NAME="${VOD_SENDER_NAME:-Tribal TV}"
 
 TOKEN_FILE="$HOME/.supabase_token"
@@ -39,6 +38,13 @@ die() { printf 'ABORT: %s\n' "$*" >&2; exit 1; }
 
 SUPABASE_TOKEN=$(tr -d '\r\n' < "$TOKEN_FILE")
 [ -n "$SUPABASE_TOKEN" ] || die "$TOKEN_FILE is empty"
+# A pasted anon or service_role key is the easy mistake: both are JWTs, and the
+# Management API answers 401 in a way that reads like a permissions problem
+# rather than a wrong credential.
+case "$SUPABASE_TOKEN" in
+  sbp_*) ;;
+  *) die "$TOKEN_FILE does not start with sbp_ -- that is not a personal access token" ;;
+esac
 
 API="https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth"
 

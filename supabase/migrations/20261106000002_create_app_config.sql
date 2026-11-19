@@ -9,16 +9,16 @@ create table if not exists app_config (
     updated_at timestamptz not null default now()
 );
 
--- Seed default config
+-- Seed default config.
+--
+-- App-level only. IPTV settings (default playlist, EPG refresh, buffer size)
+-- are deliberately absent: the free tier is defined in the plan as needing no
+-- backend, so its configuration lives in SettingsStore on the device. Adding
+-- them here would make the IPTV path depend on a network read it must not need.
 insert into app_config (key, value, description, is_public) values
     ('maintenance_mode', '{"enabled": false, "message": "App is under maintenance. Please try again later."}'::jsonb, 'Enable maintenance mode with custom message', true),
     ('force_update', '{"enabled": false, "min_version_code": 1, "message": "A new version is required. Please update from the store."}'::jsonb, 'Force update with minimum version code', true),
-    ('min_app_version', '{"min_version_code": 1, "message": "This version is no longer supported. Please update."}'::jsonb, 'Minimum supported app version', true),
-    ('default_playlist_url', '"https://iptv-org.github.io/iptv/countries/za.m3u"'::jsonb, 'Default playlist URL for first launch', true),
-    ('epg_auto_refresh_hours', '6'::jsonb, 'EPG auto-refresh interval in hours', true),
-    ('max_buffer_size_mb', '50'::jsonb, 'Maximum buffer size for playback in MB', true),
-    ('enable_vidsrc_movies', 'true'::jsonb, 'Enable VidSrc movies/TV shows feature', true),
-    ('vidsrc_base_url', '"https://vidsrc.sh"'::jsonb, 'VidSrc API base URL', true)
+    ('min_app_version', '{"min_version_code": 1, "message": "This version is no longer supported. Please update."}'::jsonb, 'Minimum supported app version', true)
 on conflict (key) do nothing;
 
 -- Trigger to auto-update updated_at
@@ -29,6 +29,7 @@ begin
     return new;
 end $$;
 
+drop trigger if exists update_app_config_updated_at on app_config;
 create trigger update_app_config_updated_at
     before update on app_config
     for each row execute function update_app_config_updated_at();
@@ -37,12 +38,14 @@ create trigger update_app_config_updated_at
 alter table app_config enable row level security;
 
 -- Public can read public configs
+drop policy if exists "Public read app config" on app_config;
 create policy "Public read app config"
     on app_config
     for select
     using (is_public = true);
 
 -- Admin can do everything (hardcoded emails)
+drop policy if exists "Admin full access app config" on app_config;
 create policy "Admin full access app config"
     on app_config
     for all

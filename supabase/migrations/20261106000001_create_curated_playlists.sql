@@ -29,6 +29,7 @@ begin
     return new;
 end $$;
 
+drop trigger if exists update_curated_playlists_updated_at on curated_playlists;
 create trigger update_curated_playlists_updated_at
     before update on curated_playlists
     for each row execute function update_updated_at_column();
@@ -37,12 +38,14 @@ create trigger update_curated_playlists_updated_at
 alter table curated_playlists enable row level security;
 
 -- Public can read active playlists
+drop policy if exists "Public read active playlists" on curated_playlists;
 create policy "Public read active playlists"
     on curated_playlists
     for select
     using (is_active = true);
 
 -- Admin can do everything (hardcoded emails)
+drop policy if exists "Admin full access playlists" on curated_playlists;
 create policy "Admin full access playlists"
     on curated_playlists
     for all

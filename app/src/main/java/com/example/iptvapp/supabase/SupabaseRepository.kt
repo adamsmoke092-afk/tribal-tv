@@ -146,26 +146,11 @@ class AppConfigRepository(private val postgrest: PostgrestClient) {
             val maintenance = configMap["maintenance_mode"]?.let { parseMaintenance(it) } ?: FeatureFlags.DEFAULT.maintenanceMode
             val forceUpdate = configMap["force_update"]?.let { parseForceUpdate(it) } ?: FeatureFlags.DEFAULT.forceUpdate
             val minVersion = configMap["min_app_version"]?.let { parseMinVersion(it) } ?: FeatureFlags.DEFAULT.minAppVersion
-            val defaultPlaylist = configMap["default_playlist_url"]?.get("default_playlist_url")?.toString()
-                ?: FeatureFlags.DEFAULT.defaultPlaylistUrl
-            val epgRefresh = configMap["epg_auto_refresh_hours"]?.get("epg_auto_refresh_hours")?.toString()?.toIntOrNull()
-                ?: FeatureFlags.DEFAULT.epgAutoRefreshHours
-            val maxBuffer = configMap["max_buffer_size_mb"]?.get("max_buffer_size_mb")?.toString()?.toIntOrNull()
-                ?: FeatureFlags.DEFAULT.maxBufferSizeMb
-            val enableVidSrc = configMap["enable_vidsrc_movies"]?.get("enable_vidsrc_movies")?.toString()?.toBoolean()
-                ?: FeatureFlags.DEFAULT.enableVidSrcMovies
-            val vidSrcUrl = configMap["vidsrc_base_url"]?.get("vidsrc_base_url")?.toString()
-                ?: FeatureFlags.DEFAULT.vidSrcBaseUrl
 
             return FeatureFlags(
                 maintenanceMode = maintenance,
                 forceUpdate = forceUpdate,
-                minAppVersion = minVersion,
-                defaultPlaylistUrl = defaultPlaylist,
-                epgAutoRefreshHours = epgRefresh,
-                maxBufferSizeMb = maxBuffer,
-                enableVidSrcMovies = enableVidSrc,
-                vidSrcBaseUrl = vidSrcUrl
+                minAppVersion = minVersion
             )
         }
 

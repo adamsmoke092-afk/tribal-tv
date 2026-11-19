@@ -46,9 +46,10 @@
             </intent-filter>
         </activity>
 
-        <!-- Phase 0.5 A3 spike. Own launcher entry so it opens without touching
-             MainActivity. Throwaway: delete this block, the spike/ package, and
-             the three androidx.credentials dependencies once A3/A4 pass. -->
+        <!-- Phase 0.5 A1/A2 spike. Own launcher entry so it opens without
+             touching MainActivity. Throwaway: delete this block, the spike/
+             package, and the three androidx.credentials dependencies once
+             A1/A2 pass. -->
         <activity
             android:name=".spike.GoogleSignInSpikeActivity"
             android:exported="true"

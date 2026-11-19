@@ -20,27 +20,21 @@ data class AppConfig(
 
 /**
  * Parsed feature flags from app_config table.
+ *
+ * App-level only. IPTV settings (default playlist, EPG refresh, buffer size)
+ * are not here: the free tier must work with no backend, so they live in
+ * SettingsStore on the device.
  */
 data class FeatureFlags(
     val maintenanceMode: MaintenanceConfig,
     val forceUpdate: ForceUpdateConfig,
-    val minAppVersion: MinVersionConfig,
-    val defaultPlaylistUrl: String,
-    val epgAutoRefreshHours: Int,
-    val maxBufferSizeMb: Int,
-    val enableVidSrcMovies: Boolean,
-    val vidSrcBaseUrl: String
+    val minAppVersion: MinVersionConfig
 ) {
     companion object {
         val DEFAULT = FeatureFlags(
             maintenanceMode = MaintenanceConfig(false, "App is under maintenance. Please try again later."),
             forceUpdate = ForceUpdateConfig(false, 1, "A new version is required. Please update from the store."),
-            minAppVersion = MinVersionConfig(1, "This version is no longer supported. Please update."),
-            defaultPlaylistUrl = "https://iptv-org.github.io/iptv/countries/za.m3u",
-            epgAutoRefreshHours = 6,
-            maxBufferSizeMb = 50,
-            enableVidSrcMovies = true,
-            vidSrcBaseUrl = "https://vidsrc.sh"
+            minAppVersion = MinVersionConfig(1, "This version is no longer supported. Please update.")
         )
     }
 }

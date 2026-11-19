@@ -68,6 +68,10 @@ enabled = false
 enabled = false
 
 [functions]
+# Disabled here on purpose. The Edge Functions -- the Phase 0 probe and the VOD
+# proxy -- live in the private backend repo, because their source names the
+# upstream's hosts and signature headers and this repo is public. The leak
+# check in ~/push-tribaltv.sh enforces that split.
 enabled = false
 
 [realtime]

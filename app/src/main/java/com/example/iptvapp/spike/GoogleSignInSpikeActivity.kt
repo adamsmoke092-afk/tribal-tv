@@ -42,7 +42,7 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import java.security.MessageDigest
-import java.util.UUID
+import java.security.SecureRandom
 import kotlinx.coroutines.launch
 
 // Public by design: this is the token audience, not a credential, and it ships
@@ -55,8 +55,8 @@ private const val WEB_CLIENT_ID =
 private const val TAG = "AuthSpike"
 
 /**
- * Phase 0.5 A3 spike: obtain a Google ID token from Credential Manager and show
- * it, so the Supabase id_token exchange (A4) can be run from a terminal without
+ * Phase 0.5 A1/A2 spike: obtain a Google ID token from Credential Manager and
+ * show it, so the Supabase id_token exchange can be run from a terminal without
  * any auth code in the app.
  *
  * Throwaway. It answers one question -- does the Android OAuth client
@@ -154,7 +154,7 @@ class GoogleSignInSpikeActivity : ComponentActivity() {
                         idToken = null
                         nonce = null
                         scope.launch {
-                            val raw = if (useNonce) UUID.randomUUID().toString() else null
+                            val raw = if (useNonce) freshRawNonce() else null
                             val (s, t) = requestIdToken(raw)
                             status = s
                             idToken = t
@@ -194,3 +194,20 @@ private fun sha256Hex(value: String): String =
     MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+
+/**
+ * The 'raw' half of the nonce contract: 32 random bytes, base64url. A UUID would
+ * also serve — the only requirement is that Supabase receives exactly the string
+ * whose SHA-256 Google was handed — but §9 names this form, so this is the form
+ * the spike exercises rather than a near-equivalent.
+ */
+private fun freshRawNonce(): String {
+    val bytes = ByteArray(32)
+    SecureRandom().nextBytes(bytes)
+    return android.util.Base64.encodeToString(
+        bytes,
+        android.util.Base64.URL_SAFE or
+            android.util.Base64.NO_WRAP or
+            android.util.Base64.NO_PADDING,
+    )
+}
